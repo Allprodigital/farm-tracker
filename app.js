@@ -52,11 +52,11 @@ function seedTractors(d) {
      {key: 'fuel', name: 'Fuel filters (example)', everyHours: 500, lastHours: 1300, lastDays: 200},
      {key: 'hyd', name: 'Hydraulic / transmission filter (example)', everyHours: 750, lastHours: 1200, lastDays: 200},
      {key: 'air', name: 'Air filter check (example)', everyDays: 30, lastDays: 20},
-     {key: 'grease', name: 'Grease fittings (example)', everyHours: 50, lastHours: 1820, lastDays: 8}],
+     {key: 'grease', name: 'Grease fittings (example)', everyHours: 50, lastHours: 1830, lastDays: 8}],
     [{days: 95, hours: 1600, type: 'service', iv: 'oil', work: 'Changed engine oil & filter (example)', parts: 'Oil filter, 5 gal engine oil', cost: 185},
      {days: 20, hours: 1810, type: 'service', iv: 'air', work: 'Checked and blew out air filter (example)'},
      {days: 12, hours: 1822, type: 'repair', work: 'Replaced cracked hydraulic hose on rear remote (example)', parts: 'Hydraulic hose + fittings', cost: 145, notes: 'Hose was rubbing on the drawbar frame. Added a clamp.'},
-     {days: 8, hours: 1820, type: 'service', iv: 'grease', work: 'Greased all fittings (example)'}]);
+     {days: 8, hours: 1830, type: 'service', iv: 'grease', work: 'Greased all fittings (example)'}]);
   addT({name: 'John Deere 4440', make: 'John Deere', model: '4440', year: '1980'},
     [[90, 9010], [40, 9060], [3, 9120]],
     [{key: 'oil', name: 'Engine oil & filter (example)', everyHours: 150, lastHours: 9050, lastDays: 45},
