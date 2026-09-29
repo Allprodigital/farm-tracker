@@ -1,7 +1,7 @@
 /* Farm Tracker (milestone 1 + tractor maintenance) by All Pro Digital, a Valley Pro Logistics LLC company.
    Single-file vanilla JS app. Data lives on this device in localStorage (key: farmtracker.v1). */
 'use strict';
-const VERSION = '1.3.1';
+const VERSION = '1.4.0';
 const KEY = 'farmtracker.v1';
 const PRESETS = [
   ['discing', 'Discing', '#8a5a2b'], ['plowing', 'Plowing', '#6d4c2f'], ['cultivating', 'Cultivating', '#9a6b12'],
@@ -104,6 +104,7 @@ function load() {
 }
 function fix(d) { const b = blank(); const hadTractors = Array.isArray(d.tractors); for (const k of Object.keys(b)) if (!Array.isArray(d[k]) && k !== 'version') d[k] = b[k];
   for (const p of b.operations) if (!d.operations.some(o => o.id === p.id)) d.operations.push(p);
+  for (const f of d.fields) if (!f.statusChangedAt) f.statusChangedAt = f.updatedAt || f.createdAt || nowIso(); // v1.4: "last worked" on cards
   if (!hadTractors) { if (d.fields.some(f => f.sample)) seedTractors(d); persist(d); } // v1.2 upgrade: phones still on sample data get the sample tractors too
   return d; }
 function persist(d = db) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { alert('Could not save on this phone: ' + e.message); } }
@@ -156,11 +157,31 @@ const fmtDate = ymd => { if (!ymd) return ''; const [y, m, d] = ymd.split('-').m
 function ago(iso) {
   if (!iso) return ''; const s = (Date.now() - new Date(iso)) / 1000;
   if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + ' min ago'; if (s < 86400) return Math.floor(s / 3600) + ' hr ago';
-  const d = Math.floor(s / 86400); return d === 1 ? 'yesterday' : d + ' days ago';
+  const d = Math.floor(s / 86400); return d === 1 ? 'yesterday' : d < 60 ? d + ' days ago' : Math.round(d / 30.4) + ' months ago';
 }
 const when = iso => `${esc(fmt(iso))} <span class="muted">(${esc(ago(iso))})</span>`;
 const touch = f => { f.updatedAt = nowIso(); };
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 1800); }
+function toast(msg, action) {
+  const t = $('#toast'); clearTimeout(toast.t); t.classList.toggle('has-action', !!action);
+  t.innerHTML = `<span>${esc(msg)}</span>${action ? `<button type="button" class="toast-act">${esc(action.label)}</button>` : ''}`;
+  if (action) $('.toast-act', t).onclick = () => { t.classList.remove('show', 'has-action'); action.run(); };
+  t.classList.add('show'); toast.t = setTimeout(() => t.classList.remove('show', 'has-action'), action ? 7000 : 1800);
+}
+/* Deletes happen right away with an Undo button in the toast. Photos are only removed once the Undo window closes. */
+let undoState = null;
+function finalizeUndo() { if (!undoState) return; clearTimeout(undoState.timer); const ph = undoState.photos; undoState = null; if (ph.length) dropPhotos(ph); }
+function undoable(msg, mutate, {photos = [], back = null} = {}) {
+  finalizeUndo(); const snap = JSON.stringify(db); mutate(); save();
+  undoState = {snap, photos: photos.filter(Boolean), back, timer: setTimeout(finalizeUndo, 7200)};
+  toast(msg, {label: 'Undo', run: () => { const u = undoState; if (!u) return; clearTimeout(u.timer); undoState = null; db = JSON.parse(u.snap); save();
+    if (u.back && location.hash !== u.back) location.hash = u.back; else rerender(); setTimeout(() => toast('Restored'), 50); }});
+}
+/* Big, tap-friendly confirm (instead of the small browser pop-up) for deleting a whole field or tractor. */
+function confirmSheet({title, body, yes, run}) {
+  openSheet(`<h2>${esc(title)}</h2><p class="confirm-body">${body}</p>
+    <div class="sheet-actions"><button type="button" data-close>Cancel</button><button type="button" class="danger-solid" id="cf-yes">${esc(yes)}</button></div>`,
+    p => $('#cf-yes', p).addEventListener('click', () => { closeSheet(); run(); }));
+}
 const cropLine = f => [f.crop, f.variety, f.acres ? f.acres + ' ac' : ''].filter(Boolean).map(esc).join(' · ');
 
 /* ---------- sheet (bottom panel) ---------- */
@@ -191,35 +212,51 @@ function render() {
   updateTabBadge(); updateBell(); hydratePhotos($('#view'));
   if (/^#\/alerts/.test(h)) { history.replaceState(null, '', '#/'); openBell(); }
   if (onDetail) buildPrint(h.startsWith('#/field/') ? 'field' : 'tractor', m[1]); // ready for an instant Print tap
+  if (h !== lastRoute) { const v = $('#view'); v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter'); lastRoute = h; }
   if (!keepScroll) window.scrollTo(0, 0); keepScroll = false;
 }
+let lastRoute = null;
 let keepScroll = false;
 const rerender = () => { keepScroll = true; const y = scrollY; render(); scrollTo(0, y); };
 window.addEventListener('hashchange', render);
 
-const sampleBanner = compact => !hasSamples() ? '' : compact ? `<div class="sample-banner compact"><span><b>Sample data loaded</b> so you can try the app.</span><button class="danger edit" data-act="clear-samples">Remove</button></div>` : `<div class="sample-banner"><b>Sample fields and tractors are loaded.</b> They are here so you can try the app. Add your own, then remove the samples.
-  <div class="row" style="margin-top:10px"><button class="danger" data-act="clear-samples">Remove sample data</button></div></div>`;
+const sampleBanner = () => !hasSamples() ? '' : `<div class="sample-banner compact"><span><b>Sample data loaded</b> so you can try the app.</span><button class="danger edit" data-act="clear-samples">Remove</button></div>`;
 const addBtn = (secondary) => `<button class="${secondary ? 'fab secondary' : 'primary fab'}" data-act="add-field">+ Add field</button>`;
 const sortedFields = () => [...db.fields].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
 const byName = () => [...db.fields].sort((a, b) => a.name.localeCompare(b.name, 'en', {numeric: true}));
 
+function lastWorked(f) {
+  const since = f.statusChangedAt, d = since ? Math.floor((Date.now() - new Date(since)) / 864e5) : null; let a;
+  if (d == null) a = ''; else if (f.operationId === 'idle') a = d < 1 ? 'Idle since today' : d === 1 ? 'Idle since yesterday' : `Idle for ${d < 60 ? d + ' days' : Math.round(d / 30.4) + ' months'}`;
+  else a = `Last worked <b>${esc(ago(since))}</b>`;
+  const u = ago(f.updatedAt); return [a, u && u !== ago(since) ? `updated ${esc(u)}` : ''].filter(Boolean).join(' · ') || `Updated ${esc(u)}`;
+}
 function fieldCard(f, tag = 'a') {
   const o = op(f.operationId);
-  const inner = `<div class="fc-top"><div><div class="fc-name">${esc(f.name)} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</div>
-      ${cropLine(f) ? `<div class="fc-crop">${cropLine(f)}</div>` : ''}</div><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></div>
+  const inner = `<div class="fc-top"><div class="fc-name">${esc(f.name)} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</div><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></div>
+    ${cropLine(f) ? `<div class="fc-crop">${cropLine(f)}</div>` : ''}
     ${f.currentState ? `<div class="fc-line"><b>Now:</b> ${esc(f.currentState)}</div>` : ''}
     <div class="fc-next"><b>Next up:</b> ${f.nextTodo ? esc(f.nextTodo) : '<span class="empty">Nothing set</span>'}</div>
-    <div class="fc-foot">Updated ${esc(ago(f.updatedAt))} · ${esc(fmt(f.updatedAt))}</div>`;
+    <div class="fc-foot">${lastWorked(f)}</div>`;
   return tag === 'a' ? `<a class="field-card" style="--op:${o.color}" href="#/field/${f.id}">${inner}</a>` : `<div class="field-card" style="--op:${o.color}">${inner}</div>`;
 }
 
+const SORT_KEY = 'farmtracker.fieldSort';
+const SORTS = [['recent', 'Recent'], ['name', 'A–Z'], ['op', 'Operation']];
 function viewAll() {
   document.title = 'All Fields · Farm Tracker';
-  const fields = sortedFields();
+  const mode = SORTS.some(x => x[0] === localStorage.getItem(SORT_KEY)) ? localStorage.getItem(SORT_KEY) : 'recent';
+  let list;
+  if (mode === 'op') { const idx = id => { const i = db.operations.findIndex(o => o.id === id); return i < 0 ? 999 : i; }; let last = null;
+    list = byName().sort((a, b) => idx(a.operationId) - idx(b.operationId)).map(f => { const o = op(f.operationId); const head = f.operationId !== last;
+      last = f.operationId; const n = db.fields.filter(x => x.operationId === f.operationId).length;
+      return `${head ? `<li class="grp-head"><span class="grp-dot" style="--op:${o.color}"></span>${esc(o.name)} <span class="muted">· ${n}</span></li>` : ''}<li>${fieldCard(f)}</li>`; }).join('');
+  } else list = (mode === 'name' ? byName() : sortedFields()).map(f => `<li>${fieldCard(f)}</li>`).join('');
   $('#view').innerHTML = `${sampleBanner()}
     <div class="row split"><h1>All fields</h1><span class="muted small">${db.fields.length} field${db.fields.length === 1 ? '' : 's'}</span></div>
-    ${fields.length ? `<ul class="fields">${fields.map(f => `<li>${fieldCard(f)}</li>`).join('')}</ul>`
-      : `<div class="card"><p class="bigtext">No fields yet.</p><p class="muted">Tap <b>Add field</b> below to start your list.</p></div>`}
+    ${db.fields.length > 1 ? `<div class="chips" role="group" aria-label="Sort fields"><span class="chips-label">Sort</span>${SORTS.map(([k, l]) => `<button type="button" class="chip" data-act="sort" data-id="${k}" aria-pressed="${k === mode}">${l}</button>`).join('')}</div>` : ''}
+    ${db.fields.length ? `<ul class="fields">${list}</ul>`
+      : `<div class="card empty-card"><p class="bigtext"><b>No fields yet.</b></p><p class="muted">Tap <b>+ Add field</b> below to start your list.</p></div>`}
     ${addBtn()}`;
 }
 
@@ -235,8 +272,11 @@ function matches(q) {
 function viewHome() {
   document.title = 'Farm Tracker';
   const sel = selectedField(), tsel = selectedTractor();
-  $('#view').innerHTML = `${sampleBanner(true)}
+  $('#view').innerHTML = `${sampleBanner()}
     <section class="home-sec" aria-labelledby="q-label">
+    ${!db.fields.length ? `<div class="sec-head"><h2 id="q-label" class="search-label">Fields</h2></div>
+      <div class="card home-empty first-run"><p class="bigtext"><b>No fields yet.</b></p><p class="muted small">Add each field once. Then pick it here to see where it stands and what's next.</p>
+      <button class="primary wide" data-act="add-field">+ Add your first field</button></div>` : `
     <div class="search-wrap">
       <div class="sec-head"><label for="q" id="q-label" class="search-label">Find a field</label><button class="edit" data-act="add-field">+ Add field</button></div>
       <div class="search-box"><svg class="search-ico" aria-hidden="true" viewBox="0 0 24 24" width="26" height="26"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>
@@ -249,23 +289,26 @@ function viewHome() {
       ${byName().map(f => `<option value="${f.id}" ${sel && sel.id === f.id ? 'selected' : ''}>${esc(f.name)}${f.crop ? ' · ' + esc(f.crop) : ''}</option>`).join('')}</select>
     <div class="home-result">
     ${sel ? `${fieldCard(sel, 'div')}
-      <div class="row"><a class="btn primary grow" href="#/field/${sel.id}">Open full detail ›</a><button data-act="clear-sel" aria-label="Clear selected field">Clear</button></div>`
+      <div class="row"><a class="btn primary grow" href="#/field/${sel.id}">Open field ›</a><button data-act="clear-sel" aria-label="Clear selected field">Clear</button></div>`
     : `<div class="card home-empty"><p class="bigtext"><b>Pick a field to see where it stands.</b></p>
-      <p class="muted small">${db.fields.length ? 'Search above or choose from the list. <b>All Fields</b> below shows every field.' : 'No fields yet. Tap <b>+ Add field</b> to add your first one.'}</p></div>`}
-    </div></section>
+      <p class="muted small">Search above or choose from the list. <b>All Fields</b> below shows every field.</p></div>`}
+    </div>`}</section>
     <section class="home-sec" aria-labelledby="t-label">
-      <div class="sec-head"><h2 id="t-label" class="search-label">Tractor maintenance log</h2><button class="edit" data-act="add-tractor">+ Add tractor</button></div>
-      <label for="tpick">Pick from your tractors</label>
+      ${!db.tractors.length ? `<div class="sec-head"><h2 id="t-label" class="search-label">Tractors</h2></div>
+      <div class="card home-empty first-run"><p class="bigtext"><b>No tractors yet.</b></p><p class="muted small">Add a tractor to track its hours, service and repairs.</p>
+      <button class="primary wide" data-act="add-tractor">+ Add a tractor</button></div>` : `
+      <div class="sec-head"><h2 id="t-label" class="search-label">Tractors</h2><button class="edit" data-act="add-tractor">+ Add tractor</button></div>
+      <label for="tpick">Pick a tractor</label>
       <select id="tpick" class="picker"><option value="">Choose a tractor…</option>
-        ${byTractorName().map(t => { const nd = nextDue(t); return `<option value="${t.id}" ${tsel && tsel.id === t.id ? 'selected' : ''}>${esc(t.name)}${nd && nd.st.level === 'over' ? ' · OVERDUE' : nd && nd.st.level === 'soon' ? ' · due soon' : ''}</option>`; }).join('')}</select>
+        ${byTractorName().map(t => { const nd = nextDue(t); return `<option value="${t.id}" ${tsel && tsel.id === t.id ? 'selected' : ''}>${esc(t.name)}${nd && nd.st.level === 'over' ? ' · overdue' : nd && nd.st.level === 'soon' ? ' · due soon' : ''}</option>`; }).join('')}</select>
       <div class="home-result">
       ${tsel ? `${tractorCard(tsel, 'div')}
-        <div class="row"><a class="btn primary grow" href="#/tractor/${tsel.id}">Open maintenance log ›</a><button data-act="clear-tsel" aria-label="Clear selected tractor">Clear</button></div>`
+        <div class="row"><a class="btn primary grow" href="#/tractor/${tsel.id}">Open tractor ›</a><button data-act="clear-tsel" aria-label="Clear selected tractor">Clear</button></div>`
       : `<div class="card home-empty"><p class="bigtext"><b>Pick a tractor to see hours and what service is due.</b></p>
-        <p class="muted small">${db.tractors.length ? '<b>Tractors</b> below lists them all.' : 'No tractors yet. Tap <b>+ Add tractor</b>.'}</p></div>`}
-      </div></section>`;
-  $('#tpick').addEventListener('change', e => selectTractor(e.target.value));
-  const q = $('#q'), sugg = $('#sugg');
+        <p class="muted small">The <b>Tractors</b> tab below lists them all.</p></div>`}
+      </div>`}</section>`;
+  if ($('#tpick')) $('#tpick').addEventListener('change', e => selectTractor(e.target.value));
+  const q = $('#q'), sugg = $('#sugg'); if (!q) return;
   const show = () => {
     const list = matches(q.value); const open = q.value.trim() !== '';
     sugg.innerHTML = !open ? '' : list.length ? list.map((f, i) => { const o = op(f.operationId); return `<li role="option" id="s-${i}"><button type="button" data-pick="${f.id}">
@@ -323,7 +366,7 @@ function viewTractors() {
   $('#view').innerHTML = `${sampleBanner()}
     <div class="row split"><h1>Tractors</h1><span class="muted small">${list.length} tractor${list.length === 1 ? '' : 's'}</span></div>
     ${list.length ? `<ul class="fields">${list.map(t => `<li>${tractorCard(t)}</li>`).join('')}</ul>`
-      : `<div class="card"><p class="bigtext">No tractors yet.</p><p class="muted">Tap <b>+ Add tractor</b> below to add one.</p></div>`}
+      : `<div class="card empty-card"><p class="bigtext"><b>No tractors yet.</b></p><p class="muted">Tap <b>+ Add tractor</b> below to add one.</p></div>`}
     <button class="primary fab" data-act="add-tractor">+ Add tractor</button>`;
 }
 
@@ -334,7 +377,7 @@ function viewTractor(t) {
     .sort((a, b) => b.d.localeCompare(a.d) || b.at.localeCompare(a.at));
   $('#view').innerHTML = `
     <button class="back" data-go="${lastTab}">‹ ${lastTab === '#/tractors' ? 'Tractors' : 'Home'}</button>
-    ${t.sample ? `<div class="sample-banner"><b>Sample tractor.</b> Hours, service intervals and entries are made-up examples, not John Deere specs. Use your operator's manual for real intervals.</div>` : ''}
+    ${t.sample ? `<div class="sample-banner note"><b>Sample tractor.</b> Hours, intervals and entries are made-up examples, not John Deere specs. Use your operator's manual for real intervals.</div>` : ''}
     <div class="card">
       <h1>${esc(t.name)} ${t.sample ? '<span class="tag-sample">Sample</span>' : ''}</h1>
       <dl class="meta">${[['Make', t.make], ['Model', t.model], ['Year', t.year], ['Serial / VIN', t.serial]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('') || '<dt>Details</dt><dd class="empty">not set</dd>'}</dl>
@@ -474,8 +517,8 @@ function intervalForm(t, iv) {
       if (isNew) db.intervals.push({id: uid(), tractorId: t.id, createdAt: nowIso(), ...data}); else Object.assign(iv, data);
       t.updatedAt = nowIso(); save(); closeSheet(); render(); toast('Interval saved');
     });
-    const d = $('#i-del', p); if (d) d.addEventListener('click', () => { if (confirm(`Delete "${iv.name}"? Past log entries stay.`)) { db.intervals = db.intervals.filter(x => x.id !== iv.id);
-      db.maint.forEach(m => { if (m.intervalId === iv.id) m.intervalId = null; }); save(); closeSheet(); render(); toast('Interval deleted'); } });
+    const d = $('#i-del', p); if (d) d.addEventListener('click', () => { closeSheet(); undoable('Interval deleted', () => { db.intervals = db.intervals.filter(x => x.id !== iv.id);
+      db.maint.forEach(m => { if (m.intervalId === iv.id) m.intervalId = null; }); t.updatedAt = nowIso(); }); rerender(); });
   });
 }
 
@@ -553,7 +596,7 @@ function viewAbout() {
       <h1 style="margin-top:12px">Farm Tracker</h1>
       <p class="bigtext" style="margin:4px 0">by <b>All Pro Digital</b></p>
       <p class="muted" style="margin:0">a Valley Pro Logistics LLC company</p>
-      <p class="muted small">Version ${VERSION} · Demo · Sister app of Service Tracker</p>
+      <p class="muted small" style="margin-bottom:0">Version ${VERSION} · Demo<br>Sister app of Service Tracker</p>
     </div>
     <div class="card" id="backup-card">
       <h2>Backup</h2>
@@ -565,14 +608,15 @@ function viewAbout() {
     </div>
     <div class="card">
       <h2>Service reminders</h2>
-      <p style="margin-top:0">Farm Tracker shows a reminder on Home and a count on the Tractors tab when service is due soon or overdue.</p>
+      <p style="margin-top:0">The <b>bell</b> at the top shows a red number when service is due soon or overdue, or when it's time to back up. Tap it for the list.</p>
       ${!canNotify() ? `<p class="small">${IS_IOS ? 'Phone alerts on iPhone need iOS 16.4+ and Farm Tracker added to the Home Screen (Share › Add to Home Screen), then opened from the icon.' : 'This browser does not support phone alerts.'}</p>`
         : Notification.permission === 'granted' ? '<p class="small"><b>Phone alerts are on.</b> You get an alert when you open the app and something is due.</p><button class="wide" data-act="test-alert">Send a test alert</button>'
         : Notification.permission === 'denied' ? '<p class="small">Phone alerts are blocked for this site. Turn them on in your browser or phone settings.</p>'
         : '<button class="primary wide" data-act="enable-alerts">Turn on phone alerts</button>'}
       <p class="tiny muted">Alerts show when the app is opened. To get alerts while the app is closed, use <b>Add to calendar</b> on each service item.</p>
     </div>
-    <div class="card"><h2>Sample data</h2><button class="wide" data-act="reset-samples">Reload sample data</button></div>
+    <div class="card"><h2>Help</h2><button class="wide" data-act="welcome">Show the quick tour</button>
+      <button class="wide" style="margin-top:10px" data-act="reset-samples">Reload sample data</button></div>
     <div class="card">
       <h2>Custom operations</h2>
       ${custom.length ? `<ul class="items">${custom.map(o => `<li><div class="txt"><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></div>
@@ -606,9 +650,17 @@ function fieldForm(f) {
   });
 }
 
+// Up to 3 operations used most recently (any field), shown first once custom operations make the list long.
+function recentOps(f) {
+  if (db.operations.length <= PRESETS.length) return [];
+  const out = []; for (const h of [...db.history].sort((a, b) => b.at.localeCompare(a.at))) {
+    if (h.toOpId !== f.operationId && !out.some(o => o.id === h.toOpId)) { const o = db.operations.find(x => x.id === h.toOpId); if (o) out.push(o); } if (out.length === 3) break; }
+  return out;
+}
 function statusPicker(f) {
   openSheet(`<h2>Change status</h2><p class="muted small" style="margin:0">Tap the operation this field is in now.</p>
     <label for="s-note">Note for this change (optional)</label><input id="s-note" placeholder="e.g. First pass">
+    ${recentOps(f).length ? `<p class="ops-label">Recent</p><div class="ops recent">${recentOps(f).map(o => `<button data-op="${o.id}" style="--op:${o.color}">${esc(o.name)}</button>`).join('')}</div><p class="ops-label">All operations</p>` : ''}
     <div class="ops">${db.operations.map(o => `<button data-op="${o.id}" class="${o.id === f.operationId ? 'cur' : ''}" style="--op:${o.color}">${esc(o.name)}${o.id === f.operationId ? ' ✓' : ''}</button>`).join('')}</div>
     <form id="custom-op"><label for="c-name">Add custom operation</label>
       <div class="row"><input id="c-name" class="grow" placeholder="e.g. Bedding, Rolling, Laser leveling" autocomplete="off" style="flex:1 1 0"><button class="primary" type="submit">Add</button></div></form>
@@ -670,7 +722,7 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b || b.closest('#sheet')) return;
   const m = (location.hash.match(/^#\/field\/([\w-]+)/) || [])[1]; const f = m && field(m); const id = b.dataset.id;
   const tm = (location.hash.match(/^#\/tractor\/([\w-]+)/) || [])[1]; const t = tm && tractor(tm);
-  const del = (list, what) => { if (confirm(`Delete this ${what}?`)) { db[list] = db[list].filter(x => x.id !== id); if (f) touch(f); if (t) t.updatedAt = nowIso(); save(); render(); toast('Deleted'); } };
+  const del = (list, what) => { undoable(what + ' deleted', () => { db[list] = db[list].filter(x => x.id !== id); if (f) touch(f); if (t) t.updatedAt = nowIso(); }); rerender(); };
   switch (b.dataset.act) {
     case 'add-field': return fieldForm();
     case 'clear-sel': return selectField('');
@@ -683,10 +735,12 @@ document.addEventListener('click', e => {
     case 'add-interval': return intervalForm(t);
     case 'edit-interval': return intervalForm(t, db.intervals.find(x => x.id === id));
     case 'done-interval': return logForm(t, 'service', id);
-    case 'del-entry': { const en = db.maint.find(x => x.id === id); if (en && confirm('Delete this log entry' + ((en.photoIds || []).length ? ' and its photos' : '') + '?')) { db.maint = db.maint.filter(x => x.id !== id); dropPhotos(en.photoIds); t.updatedAt = nowIso(); save(); rerender(); toast('Deleted'); } return; }
-    case 'del-reading': return del('hours', 'hours reading (current hours stay as they are)');
-    case 'del-tractor': if (confirm(`Delete "${t.name}" and its whole maintenance log? This cannot be undone.`)) { const tid = t.id; db.tractors = db.tractors.filter(x => x.id !== tid); dropPhotos(db.maint.filter(x => x.tractorId === tid).flatMap(x => x.photoIds || []));
-      for (const k of TRACTOR_KEYS) db[k] = db[k].filter(x => x.tractorId !== tid); save(); location.hash = lastTab === '#/tractors' ? '#/tractors' : '#/'; toast('Tractor deleted'); } return;
+    case 'del-entry': { const en = db.maint.find(x => x.id === id); if (!en) return; undoable('Log entry deleted', () => { db.maint = db.maint.filter(x => x.id !== id); t.updatedAt = nowIso(); }, {photos: en.photoIds || []}); return rerender(); }
+    case 'del-reading': return del('hours', 'Hours reading');
+    case 'del-tractor': return confirmSheet({title: `Delete ${t.name}?`, yes: 'Delete tractor', body: 'Its hours, service intervals and whole maintenance log go with it. You can undo for a few seconds.', run: () => {
+      const tid = t.id, photos = db.maint.filter(x => x.tractorId === tid).flatMap(x => x.photoIds || []);
+      undoable('Tractor deleted', () => { db.tractors = db.tractors.filter(x => x.id !== tid); for (const k of TRACTOR_KEYS) db[k] = db[k].filter(x => x.tractorId !== tid); }, {photos, back: '#/tractor/' + tid});
+      location.hash = lastTab === '#/tractors' ? '#/tractors' : '#/'; }});
     case 'edit-field': return fieldForm(f);
     case 'status': return statusPicker(f);
     case 'edit-text': return editText(f, b.dataset.key);
@@ -694,7 +748,7 @@ document.addEventListener('click', e => {
     case 'save-text': { const k = b.dataset.key; const val = $('#t-' + k).value.trim(); if (val !== (f[k] || '')) { f[k] = val; f[k === 'currentState' ? 'stateUpdatedAt' : 'nextUpdatedAt'] = nowIso(); touch(f); save(); toast('Saved'); } return render(); }
     case 'add-note': { const ta = $('#note-text'); const text = ta.value.trim(); const d = draftFor(f.id); if (!text && !d.photos.length) { ta.focus(); return; }
       db.notes.push({id: uid(), fieldId: f.id, text, photoIds: d.photos, createdAt: nowIso()}); delete drafts[f.id]; touch(f); save(); rerender(); return toast('Note saved'); }
-    case 'del-note': { const n = db.notes.find(x => x.id === id); if (n && confirm('Delete this note' + ((n.photoIds || []).length ? ' and its photos' : '') + '?')) { db.notes = db.notes.filter(x => x.id !== id); dropPhotos(n.photoIds); touch(f); save(); rerender(); toast('Deleted'); } return; }
+    case 'del-note': { const n = db.notes.find(x => x.id === id); if (!n) return; undoable('Note deleted', () => { db.notes = db.notes.filter(x => x.id !== id); touch(f); }, {photos: n.photoIds || []}); return rerender(); }
     case 'note-cam': case 'note-lib': return pickPhotos(b.dataset.act === 'note-cam', ids => { draftFor(f.id).photos.push(...ids); const el = $('#pending-photos'); if (el) { el.innerHTML = thumbs(draftFor(f.id).photos, 'pending-note'); hydratePhotos(el); } toast(ids.length > 1 ? 'Photos added. Tap Save note.' : 'Photo added. Tap Save note.'); });
     case 'tb-voice': if (f) { const ta = $('#note-text'); $('#notes-card').scrollIntoView({block: 'start'}); scrollBy(0, -70); return startVoice(ta, text => suggestStatus(f, text)); }
       return logForm(t, 'service', null, {voice: true});
@@ -711,16 +765,22 @@ document.addEventListener('click', e => {
     case 'test-alert': return maybeNotify(true).then(ok => toast(ok ? 'Test alert sent' : 'Nothing is due, so no alert was sent'));
     case 'add-spray': return recordForm('spray', f);
     case 'add-harvest': return recordForm('harvest', f);
-    case 'del-spray': return del('sprays', 'spray record');
-    case 'del-harvest': return del('harvests', 'harvest record');
-    case 'del-field': if (confirm(`Delete "${f.name}" and all its notes and records? This cannot be undone.`)) { const fid = f.id; db.fields = db.fields.filter(x => x.id !== fid); dropPhotos(db.notes.filter(x => x.fieldId === fid).flatMap(x => x.photoIds || [])); delete drafts[fid];
-      for (const k of ['history', 'notes', 'sprays', 'harvests']) db[k] = db[k].filter(x => x.fieldId !== fid); save(); location.hash = '#/'; toast('Field deleted'); } return;
-    case 'clear-samples': if (confirm('Remove all sample fields and tractors? Your own stay.')) { dropPhotos(samplePhotoIds()); removeSamples(db); save(); render(); toast('Samples removed'); } return;
-    case 'reset-samples': if (confirm('Load the sample fields and tractors again? Your own stay.')) { dropPhotos(samplePhotoIds()); removeSamples(db); const s = seed();
-      for (const k of ['fields', 'tractors', ...FIELD_KEYS, ...TRACTOR_KEYS]) db[k] = db[k].concat(s[k]); save(); location.hash = '#/'; render(); toast('Sample data loaded'); } return;
+    case 'del-spray': return del('sprays', 'Spray record');
+    case 'del-harvest': return del('harvests', 'Harvest record');
+    case 'del-field': return confirmSheet({title: `Delete ${f.name}?`, yes: 'Delete field', body: 'Its notes, photos, spray and harvest records and status history go with it. You can undo for a few seconds.', run: () => {
+      const fid = f.id, photos = db.notes.filter(x => x.fieldId === fid).flatMap(x => x.photoIds || []); delete drafts[fid];
+      undoable('Field deleted', () => { db.fields = db.fields.filter(x => x.id !== fid); for (const k of FIELD_KEYS) db[k] = db[k].filter(x => x.fieldId !== fid); }, {photos, back: '#/field/' + fid});
+      location.hash = '#/'; }});
+    case 'clear-samples': return confirmSheet({title: 'Remove the sample data?', yes: 'Remove samples', body: 'The sample fields and tractors go away. <b>Your own fields and tractors stay.</b>', run: () => {
+      undoable('Samples removed', () => removeSamples(db), {photos: samplePhotoIds()}); rerender(); }});
+    case 'reset-samples': return confirmSheet({title: 'Load the sample data again?', yes: 'Load samples', body: 'Puts the sample fields and tractors back so you can try things. Your own stay.', run: () => {
+      finalizeUndo(); dropPhotos(samplePhotoIds()); removeSamples(db); const s = seed();
+      for (const k of ['fields', 'tractors', ...FIELD_KEYS, ...TRACTOR_KEYS]) db[k] = db[k].concat(s[k]); save(); location.hash = '#/'; render(); toast('Sample data loaded'); }});
     case 'del-op': { const inUse = db.fields.some(x => x.operationId === id) || db.history.some(h => h.toOpId === id || h.fromOpId === id);
       if (inUse) return alert('This operation is used in a field or its history, so it stays. You can still stop picking it.');
-      if (confirm('Remove this custom operation?')) { db.operations = db.operations.filter(o => o.id !== id); save(); render(); } return; }
+      undoable('Operation removed', () => { db.operations = db.operations.filter(o => o.id !== id); }); return rerender(); }
+    case 'sort': localStorage.setItem(SORT_KEY, id); return rerender();
+    case 'welcome': return showWelcome(0);
   }
 });
 
@@ -732,7 +792,9 @@ const samplePhotoIds = () => { const fids = new Set(db.fields.filter(x => x.samp
 async function gcPhotos() { try { const used = new Set([...db.notes, ...db.maint].flatMap(x => x.photoIds || [])); for (const k of await PhotoDB.keys()) if (!used.has(k)) await PhotoDB.del(k); } catch (e) { console.warn(e); } }
 
 /* ---------- start ---------- */
+const START_HASH = location.hash;
 render();
 gcPhotos(); setTimeout(maybeNotify, 1500);
+setTimeout(() => { if (!welcomed() && (START_HASH === '' || START_HASH === '#/')) showWelcome(0); }, 1350);
 setTimeout(() => { const s = $('#splash'); s.classList.add('gone'); setTimeout(() => s.remove(), 400); }, 1200);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

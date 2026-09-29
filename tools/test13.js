@@ -9,6 +9,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
 const waitFile = async (re, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const f = fs.readdirSync(DL).find(x => re.test(x) && !x.endsWith('.crdownload')); if (f) { await sleep(200); return path.join(DL, f); } await sleep(150); } return null; };
 const MOCKS = () => {
+  try { localStorage.setItem('farmtracker.welcomed', '1'); } catch (e) {}
   window.__notified = []; window.__printed = 0; window.print = () => { window.__printed++; };
   class FakeSR { constructor() { window.__sr = this; } start() { window.__srStarted = (window.__srStarted || 0) + 1; } stop() { setTimeout(() => this.onend && this.onend(), 20); } abort() { setTimeout(() => this.onend && this.onend(), 20); } }
   window.webkitSpeechRecognition = FakeSR; window.SpeechRecognition = FakeSR;
@@ -170,13 +171,13 @@ const MOCKS = () => {
   ok(await p.$eval('#bell-panel', e => !e.classList.contains('hidden')) && (await p.evaluate(() => location.hash)) === '#/', 'opening from a notification (#/alerts) shows the bell list');
   await p.evaluate(() => closeBell());
   // empty state
-  await go('#/'); await tapAct('clear-samples'); await sleep(300);
+  await go('#/'); await tapAct('clear-samples'); await p.click('#cf-yes'); await sleep(300);
   ok(await p.$eval('#bell .bell-badge', e => e.hidden), 'no badge when nothing is due');
   await p.click('#bell'); await sleep(200);
   ok((await p.$eval('#bell-panel', e => e.textContent)).includes('All caught up'), 'bell shows "All caught up" when empty');
   if (shots) await p.screenshot({path: `${shots}/18c-bell-all-caught-up.png`}); await p.evaluate(() => closeBell());
   ok((await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) === 0, 'no horizontal overflow');
-  if (base.startsWith('https')) ok(await p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return !!r && (await caches.keys()).includes('farmtracker-v1.3.1'); }), 'service worker + v1.3.1 offline cache');
+  if (base.startsWith('https')) ok(await p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return !!r && (await caches.keys()).includes('farmtracker-v1.4.0'); }), 'service worker + v1.4.0 offline cache');
   ok(errors.length === 0, 'no console errors ' + JSON.stringify(errors));
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });

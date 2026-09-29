@@ -53,6 +53,20 @@ No backend account is set up on the build machine (only GitHub, used for hosting
 ### Push alerts while the app is closed (not built)
 Needs Web Push: a server holding VAPID keys and each phone's push subscription, plus a daily scheduled job that checks due service and sends the push; the service worker shows it. The server must know tractor hours/intervals, so it depends on cloud sync first. Example: Firebase Cloud Messaging + a scheduled Cloud Function (Blaze plan), or Supabase Edge Function + pg_cron with the web-push library. iPhone: works only for web apps added to the Home Screen, iOS 16.4+, after the user taps "allow". Until then, the .ics calendar events are the reliable closed-app alert.
 
+## v1.4: Polish pass (no new big features)
+Kept simple: fields + tractors only. Reviewed every screen at iPhone (390x844) and small Android (360x740) size.
+- **Quick tour on first launch**: 3 short steps (Home picker, bottom taskbar, bell). Skip on every step; shown once (`farmtracker.welcomed`). About › Help › **Show the quick tour** replays it.
+- **Field cards** say when the field was last worked ("Last worked yesterday", from the last status change) or "Idle for 5 months", plus "updated …" when that's different. The crop line now uses the full card width, so it no longer squeezes into three lines next to the status badge.
+- **All Fields sort chips**: Recent (default) · A–Z · Operation (grouped under operation headings with a count). The choice is remembered (`farmtracker.fieldSort`).
+- **Status picker**: once you have custom operations (the list gets long), a **Recent** row with the last 3 operations used shows at the top. With only the built-in list, nothing changes.
+- **Deletes**: notes, sprays, harvests, log entries, hours readings, intervals and custom operations delete with one tap and an **Undo** button in the toast (7 seconds). Deleting a whole field or tractor, or removing/reloading sample data, asks first in a big, thumb-friendly sheet (no small browser pop-up); it can be undone too. Photos are only erased after the Undo window closes.
+- **Fixes**: Home headings and buttons fit one line on small phones ("Tractors", "Pick a tractor", "Open field ›", "Open tractor ›"); the tractor picker shows "· overdue" without being cut off; Camera/Library icons were squashed on narrow screens; About described the old Home reminder banner (now the bell); empty Home shows one clear "+ Add your first field" / "+ Add a tractor" button instead of a search box with nothing to search.
+- **Fresh look**: warm cream background, deep green header with a sorghum-gold rule, softer cards, one consistent button style (green outline for Edit/Add), darker placeholder text for sun readability, sample-data strip compact on every list. Big tap targets and 18px+ text kept.
+- **Subtle transitions**: screens fade in, sheets slide up, the bell list drops down; all turned off when the phone asks for reduced motion. No haptics.
+- **Dark mode**: the app stays in its high-contrast light theme (`color-scheme: only light`), so phones in dark mode or with "darken websites" don't wash it out.
+- **Data**: no schema change. A small in-place fix fills `statusChangedAt` on any older field that lacks it; nothing else is touched.
+- Deliberately left alone: the tab bar, taskbar, bell, backup/restore, voice, photos, print, the Home layout (search + picker per section), the operation colors, tractor intervals and history.
+
 ## Later milestones
 - **M2 Equipment**: tractors, hours, service intervals and maintenance log shipped in v1.2 (above). Remaining: implements, link equipment to field work, reminders.
 - **M4 Accounts and sync**: sign-in, cloud sync, use on multiple phones (see Cloud sync above), then true push reminders.
@@ -106,4 +120,4 @@ Later: `Season`/crop year on Field so a field keeps a crop history year to year.
 Later link: `StatusChange.equipmentIds?` (what was run on the field).
 
 ## Tech
-Static PWA: `index.html`, `styles.css`, `print.css`, `app.js`, `lib/` (photos, voice, reminders, backup, print), `sw.js`, `manifest.webmanifest`, `icons/`. No build step, no server. Data key `farmtracker.v1` in localStorage (last Home selections: `farmtracker.selectedField`, `farmtracker.selectedTractor`) ; photos in IndexedDB `farmtracker-photos`; last backup time `farmtracker.lastBackup`. Hosted on GitHub Pages.
+Static PWA: `index.html`, `styles.css`, `print.css`, `app.js`, `lib/` (photos, voice, reminders, backup, print, welcome), `sw.js`, `manifest.webmanifest`, `icons/`. No build step, no server. Data key `farmtracker.v1` in localStorage (last Home selections: `farmtracker.selectedField`, `farmtracker.selectedTractor`) ; photos in IndexedDB `farmtracker-photos`; last backup time `farmtracker.lastBackup`; quick tour seen `farmtracker.welcomed`; All Fields sort `farmtracker.fieldSort`. Hosted on GitHub Pages.

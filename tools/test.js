@@ -8,6 +8,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   const p = await b.newPage(); const errors = [];
   p.on('pageerror', e => errors.push(e.message)); p.on('console', m => m.type() === 'error' && errors.push(m.text()));
   p.on('dialog', d => d.accept());
+  await p.evaluateOnNewDocument(() => { try { localStorage.setItem('farmtracker.welcomed', '1'); } catch (e) {} }); // first-run tour is covered by test14
   await p.setViewport({width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true});
   await p.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1');
   const shot = async (n, full) => shots && p.screenshot({path: `${shots}/${n}.png`, fullPage: !!full});
@@ -80,7 +81,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok((await p.$eval('h1', e => e.textContent)).includes('Test Field'), 'field added');
   await tapAct('edit-field'); await p.$eval('#f-name', e => e.value = ''); await p.type('#f-name', 'Test Field 2'); await p.click('#ff button[type=submit]'); await sleep(300);
   ok((await p.$eval('h1', e => e.textContent)).includes('Test Field 2'), 'field renamed');
-  await tapAct('del-field'); await sleep(400);
+  await tapAct('del-field'); await p.click('#cf-yes'); await sleep(400);
   ok(!!(await p.$('.home-empty')), 'after deleting the selected field, Home shows empty state');
   // --- tractor detail flows ---
   await p.click('.tabs a[href="#/"]'); await sleep(300);
@@ -111,7 +112,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   await p.click('.tabs a[href="#/tractors"]'); await sleep(300);
   await tapAct('add-tractor'); await p.type('#t-name', 'Test Tractor'); await p.type('#t-hours', '100'); await p.click('#tf button[type=submit]'); await sleep(400);
   ok((await p.$eval('.hours-big', e => e.textContent)).includes('100'), 'new tractor with starting hours');
-  await tapAct('del-tractor'); await sleep(400);
+  await tapAct('del-tractor'); await p.click('#cf-yes'); await sleep(400);
   ok((await p.$$eval('#view .field-card', a => a.length)) === 2, 'tractor deleted, back on Tractors tab');
   // --- fixed bars never cover buttons: scroll each page to the bottom and check the last control clears the fab/tab bar ---
   for (const route of ['#/', '#/fields', '#/tractors', '#/tractor/' + tid2, '#/field/' + nid, '#/about']) {
@@ -123,8 +124,8 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
     ok(r2.bottom <= r2.lim, `bottom bars clear the last button on ${route.slice(0, 12)} (${Math.round(r2.bottom)} <= ${Math.round(r2.lim)})`);
   }
   await p.evaluate(() => { location.hash = '#/'; }); await sleep(300);
-  await tapAct('clear-samples'); await sleep(300);
-  ok(!(await p.$('.sample-banner')) && (await p.$$eval('#tpick option', o => o.length)) === 1, 'Remove samples clears sample fields AND tractors');
+  await tapAct('clear-samples'); await p.click('#cf-yes'); await sleep(300);
+  ok(!(await p.$('.sample-banner')) && (await p.evaluate(() => db.fields.length + db.tractors.length)) === 0 && (await p.$$eval('.home-empty.first-run', a => a.length)) === 2, 'Remove samples clears sample fields AND tractors');
   await p.click('.tabs a[href="#/about"]'); await sleep(400);
   const html = await p.content();
   ok(html.includes('by <b>All Pro Digital</b>') && html.includes('Valley Pro Logistics LLC'), 'About branding');
