@@ -47,6 +47,11 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
     return c.measureText(e.selectedOptions[0].textContent).width <= e.clientWidth - 40; }); ok(optFits, 'picked tractor name + "overdue" is not cut off at 360px');
   for (const r of ['#/', '#/fields', '#/tractors', '#/field/' + ids.f, '#/tractor/' + ids.t, '#/about']) { await go(r); if ((await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) !== 0) ok(false, 'horizontal overflow at 360px on ' + r); }
   ok(true, 'no horizontal overflow at 360x740 on any screen');
+  for (const w of [360, 390]) { await phone(w, w === 360 ? 740 : 844); await sleep(200);
+    await p.evaluate(() => toast('Photo added. Add a few words and tap Save note.')); await sleep(300);
+    const r = await p.$eval('#toast', e => { const b = e.getBoundingClientRect(); return {l: b.left, r: b.right, h: b.height, over: e.scrollWidth > e.clientWidth + 1}; });
+    ok(r.l >= 8 && r.r <= w - 8 && !r.over && r.h > 60, `long toast wraps inside the screen at ${w}px (${Math.round(r.l)}–${Math.round(r.r)}, ${Math.round(r.h)}px tall)`); }
+  await phone(360, 740); await sleep(1900);
   if (shots) { await go('#/'); await shot('19-home-android-360'); }
   await phone(); await go('#/'); await p.select('#pick', ''); await p.select('#tpick', ''); await sleep(300);
   // --- "last worked" on cards ---
@@ -128,7 +133,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   if (shots) await shot('19-home-empty');
   await tap('.home-empty.first-run [data-act="add-field"]'); await sleep(300); ok(!!(await p.$('#ff')), 'first-field button opens Add field'); await p.evaluate(() => closeSheet());
   ok((await p.$$eval('meta[name="color-scheme"]', a => a.map(x => x.content))).includes('only light'), 'page opts out of forced dark mode (stays high-contrast)');
-  if (base.startsWith('https')) { await sleep(800); ok(await p.evaluate(async () => (await caches.keys()).includes('farmtracker-v1.4.0')), 'v1.4.0 offline cache'); }
+  if (base.startsWith('https')) { await sleep(800); ok(await p.evaluate(async () => (await caches.keys()).includes('farmtracker-v1.4.1')), 'v1.4.1 offline cache'); }
   ok(errors.length === 0, 'no console errors ' + JSON.stringify(errors));
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });

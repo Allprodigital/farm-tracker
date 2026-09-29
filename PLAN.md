@@ -65,6 +65,7 @@ Kept simple: fields + tractors only. Reviewed every screen at iPhone (390x844) a
 - **Subtle transitions**: screens fade in, sheets slide up, the bell list drops down; all turned off when the phone asks for reduced motion. No haptics.
 - **Dark mode**: the app stays in its high-contrast light theme (`color-scheme: only light`), so phones in dark mode or with "darken websites" don't wash it out.
 - **Data**: no schema change. A small in-place fix fills `statusChangedAt` on any older field that lacks it; nothing else is touched.
+- **1.4.1**: long toast messages (e.g. "Photo added. Add a few words and tap Save note.") wrap onto two lines instead of running off narrow screens; the Undo toast stays on one line.
 - Deliberately left alone: the tab bar, taskbar, bell, backup/restore, voice, photos, print, the Home layout (search + picker per section), the operation colors, tractor intervals and history.
 
 ## Later milestones

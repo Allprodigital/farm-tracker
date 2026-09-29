@@ -287,7 +287,8 @@ button.danger{border-color:#e5b4b4}
 /* confirm sheet */
 .confirm-body{font-size:18px;margin:6px 0 4px}
 /* toast with Undo */
-.toast{display:flex;align-items:center;gap:14px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);white-space:nowrap}
+.toast{display:flex;align-items:center;gap:14px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);width:max-content;max-width:calc(100vw - 32px);text-align:center}
+.toast.has-action{white-space:nowrap}
 .toast.has-action{pointer-events:none;padding:6px 6px 6px 18px}
 .toast.has-action.show .toast-act{pointer-events:auto}
 .toast:not(.show) *{pointer-events:none}
