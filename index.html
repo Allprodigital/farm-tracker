@@ -24,9 +24,13 @@
 </div>
 <header class="top">
   <a class="brand" href="#/"><img src="icons/icon.svg" alt="" width="36" height="36"><span>Farm Tracker</span></a>
-  <a class="about-link" href="#/about" aria-label="About Farm Tracker">About</a>
 </header>
 <main id="view" tabindex="-1"></main>
+<nav class="tabs" aria-label="Main">
+  <a href="#/"><span class="t-ico" aria-hidden="true">⌂</span>Home</a>
+  <a href="#/fields"><span class="t-ico" aria-hidden="true">☰</span>All Fields</a>
+  <a href="#/about"><span class="t-ico" aria-hidden="true">ⓘ</span>About</a>
+</nav>
 <div id="sheet" class="sheet hidden" aria-hidden="true"><div class="panel" role="dialog" aria-modal="true"></div></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="app.js"></script>

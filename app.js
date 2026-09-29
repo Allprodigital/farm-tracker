@@ -1,7 +1,7 @@
 /* Farm Tracker (milestone 1) by All Pro Digital, a Valley Pro Logistics LLC company.
    Single-file vanilla JS app. Data lives on this device in localStorage (key: farmtracker.v1). */
 'use strict';
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const KEY = 'farmtracker.v1';
 const PRESETS = [
   ['discing', 'Discing', '#8a5a2b'], ['plowing', 'Plowing', '#6d4c2f'], ['cultivating', 'Cultivating', '#9a6b12'],
@@ -93,29 +93,90 @@ function closeSheet() { const s = $('#sheet'); s.classList.add('hidden'); s.setA
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet' || e.target.closest('[data-close]')) closeSheet(); });
 
 /* ---------- screens ---------- */
+const SEL_KEY = 'farmtracker.selectedField';
+let lastTab = '#/';
 function render() {
   const h = location.hash || '#/'; const m = h.match(/^#\/field\/([\w-]+)/);
-  if (m && field(m[1])) viewField(field(m[1])); else if (h.startsWith('#/about')) viewAbout(); else viewList();
+  let tab;
+  if (m && field(m[1])) { viewField(field(m[1])); tab = lastTab; }
+  else if (h.startsWith('#/about')) { viewAbout(); tab = '#/about'; }
+  else if (h.startsWith('#/fields')) { viewAll(); tab = '#/fields'; }
+  else { viewHome(); tab = '#/'; }
+  if (!m && tab !== '#/about') lastTab = tab;
+  document.querySelectorAll('.tabs a').forEach(a => { const on = a.getAttribute('href') === tab; a.classList.toggle('active', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', render);
 
-function viewList() {
-  document.title = 'Farm Tracker';
-  const fields = [...db.fields].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-  const hasSample = db.fields.some(f => f.sample);
-  $('#view').innerHTML = `
-    ${hasSample ? `<div class="sample-banner"><b>These are sample fields.</b> They are here so you can try the app. Add your own, then remove the samples.
-      <div class="row" style="margin-top:10px"><button class="danger" data-act="clear-samples">Remove sample fields</button></div></div>` : ''}
-    <div class="row split"><h1>My fields</h1><span class="muted small">${db.fields.length} field${db.fields.length === 1 ? '' : 's'}</span></div>
-    ${fields.length ? `<ul class="fields">${fields.map(f => { const o = op(f.operationId); return `<li><a class="field-card" style="--op:${o.color}" href="#/field/${f.id}">
-      <div class="fc-top"><div><div class="fc-name">${esc(f.name)} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</div>
-        ${cropLine(f) ? `<div class="fc-crop">${cropLine(f)}</div>` : ''}</div><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></div>
-      ${f.currentState ? `<div class="fc-line"><b>Now:</b> ${esc(f.currentState)}</div>` : ''}
-      <div class="fc-next"><b>Next up:</b> ${f.nextTodo ? esc(f.nextTodo) : '<span class="empty">Nothing set</span>'}</div>
-      <div class="fc-foot">Updated ${esc(ago(f.updatedAt))}</div></a></li>`; }).join('')}</ul>`
+const sampleBanner = compact => !db.fields.some(f => f.sample) ? '' : compact ? `<div class="sample-banner compact"><span><b>Sample fields loaded</b> so you can try the app.</span><button class="danger edit" data-act="clear-samples">Remove</button></div>` : `<div class="sample-banner"><b>These are sample fields.</b> They are here so you can try the app. Add your own, then remove the samples.
+  <div class="row" style="margin-top:10px"><button class="danger" data-act="clear-samples">Remove sample fields</button></div></div>`;
+const addBtn = (secondary) => `<button class="${secondary ? 'fab secondary' : 'primary fab'}" data-act="add-field">+ Add field</button>`;
+const sortedFields = () => [...db.fields].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+const byName = () => [...db.fields].sort((a, b) => a.name.localeCompare(b.name, 'en', {numeric: true}));
+
+function fieldCard(f, tag = 'a') {
+  const o = op(f.operationId);
+  const inner = `<div class="fc-top"><div><div class="fc-name">${esc(f.name)} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</div>
+      ${cropLine(f) ? `<div class="fc-crop">${cropLine(f)}</div>` : ''}</div><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></div>
+    ${f.currentState ? `<div class="fc-line"><b>Now:</b> ${esc(f.currentState)}</div>` : ''}
+    <div class="fc-next"><b>Next up:</b> ${f.nextTodo ? esc(f.nextTodo) : '<span class="empty">Nothing set</span>'}</div>
+    <div class="fc-foot">Updated ${esc(ago(f.updatedAt))} · ${esc(fmt(f.updatedAt))}</div>`;
+  return tag === 'a' ? `<a class="field-card" style="--op:${o.color}" href="#/field/${f.id}">${inner}</a>` : `<div class="field-card" style="--op:${o.color}">${inner}</div>`;
+}
+
+function viewAll() {
+  document.title = 'All Fields · Farm Tracker';
+  const fields = sortedFields();
+  $('#view').innerHTML = `${sampleBanner()}
+    <div class="row split"><h1>All fields</h1><span class="muted small">${db.fields.length} field${db.fields.length === 1 ? '' : 's'}</span></div>
+    ${fields.length ? `<ul class="fields">${fields.map(f => `<li>${fieldCard(f)}</li>`).join('')}</ul>`
       : `<div class="card"><p class="bigtext">No fields yet.</p><p class="muted">Tap <b>Add field</b> below to start your list.</p></div>`}
-    <button class="primary fab" data-act="add-field">+ Add field</button>`;
+    ${addBtn()}`;
+}
+
+function selectedField() { const id = localStorage.getItem(SEL_KEY); return id ? field(id) : null; }
+function selectField(id) { id ? localStorage.setItem(SEL_KEY, id) : localStorage.removeItem(SEL_KEY); viewHome(); }
+function matches(q) {
+  q = q.trim().toLowerCase(); if (!q) return [];
+  const words = q.split(/\s+/);
+  return byName().filter(f => { const hay = [f.name, f.crop, f.variety].join(' ').toLowerCase(); return words.every(w => hay.includes(w)); })
+    .sort((a, b) => (b.name.toLowerCase().startsWith(q) ? 1 : 0) - (a.name.toLowerCase().startsWith(q) ? 1 : 0));
+}
+
+function viewHome() {
+  document.title = 'Farm Tracker';
+  const sel = selectedField();
+  $('#view').innerHTML = `${sampleBanner(true)}
+    <div class="search-wrap">
+      <label for="q" class="search-label">Find a field</label>
+      <div class="search-box"><svg class="search-ico" aria-hidden="true" viewBox="0 0 24 24" width="26" height="26"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>
+        <input id="q" type="search" placeholder="Search by field name or crop" autocomplete="off" enterkeyhint="search"
+          role="combobox" aria-expanded="false" aria-controls="sugg" aria-autocomplete="list"></div>
+      <ul id="sugg" class="sugg hidden" role="listbox" aria-label="Matching fields"></ul>
+    </div>
+    <label for="pick">Or pick from your list</label>
+    <select id="pick" class="picker"><option value="">Choose a field…</option>
+      ${byName().map(f => `<option value="${f.id}" ${sel && sel.id === f.id ? 'selected' : ''}>${esc(f.name)}${f.crop ? ' · ' + esc(f.crop) : ''}</option>`).join('')}</select>
+    <div class="home-result">
+    ${sel ? `${fieldCard(sel, 'div')}
+      <div class="row"><a class="btn primary grow" href="#/field/${sel.id}">Open full detail ›</a><button data-act="clear-sel" aria-label="Clear selected field">Clear</button></div>`
+    : `<div class="card home-empty"><img src="icons/icon.svg" alt="" width="72" height="72">
+      <p class="bigtext"><b>Pick a field to see where it stands.</b></p>
+      <p class="muted">${db.fields.length ? 'Search above or choose from the list. Tap <b>All Fields</b> below to see every field at once.' : 'You have no fields yet. Tap <b>+ Add field</b> to add your first one.'}</p></div>`}
+    </div>
+    ${addBtn(!!sel)}`;
+  const q = $('#q'), sugg = $('#sugg');
+  const show = () => {
+    const list = matches(q.value); const open = q.value.trim() !== '';
+    sugg.innerHTML = !open ? '' : list.length ? list.map((f, i) => { const o = op(f.operationId); return `<li role="option" id="s-${i}"><button type="button" data-pick="${f.id}">
+      <span><span class="sg-name">${esc(f.name)}</span>${cropLine(f) ? `<span class="sg-crop">${cropLine(f)}</span>` : ''}</span>
+      <span class="badge" style="--op:${o.color}">${esc(o.name)}</span></button></li>`; }).join('') : `<li class="sg-none">No field matches "${esc(q.value.trim())}"</li>`;
+    sugg.classList.toggle('hidden', !open); q.setAttribute('aria-expanded', String(open));
+  };
+  q.addEventListener('input', show);
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { const m = matches(q.value); if (m[0]) { e.preventDefault(); selectField(m[0].id); } } if (e.key === 'Escape') { q.value = ''; show(); } });
+  sugg.addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) { selectField(b.dataset.pick); toast('Showing ' + field(b.dataset.pick).name); } });
+  $('#pick').addEventListener('change', e => selectField(e.target.value));
 }
 
 function viewField(f) {
@@ -126,7 +187,7 @@ function viewField(f) {
   const sprays = db.sprays.filter(s => s.fieldId === f.id).sort((a, b) => b.date.localeCompare(a.date));
   const harvests = db.harvests.filter(s => s.fieldId === f.id).sort((a, b) => b.date.localeCompare(a.date));
   $('#view').innerHTML = `
-    <button class="back" data-go="#/">‹ All fields</button>
+    <button class="back" data-go="${lastTab}">‹ ${lastTab === '#/fields' ? 'All fields' : 'Home'}</button>
     <div class="card">
       <h1>${esc(f.name)} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</h1>
       <dl class="meta">
@@ -185,7 +246,6 @@ function viewAbout() {
   document.title = 'About · Farm Tracker';
   const custom = db.operations.filter(o => !o.builtIn);
   $('#view').innerHTML = `
-    <button class="back" data-go="#/">‹ All fields</button>
     <div class="card about-hero">
       <img src="icons/icon.svg" alt="Farm Tracker sorghum icon" width="112" height="112">
       <h1 style="margin-top:12px">Farm Tracker</h1>
@@ -225,7 +285,7 @@ function fieldForm(f) {
       if (isNew) {
         const nf = {id: uid(), ...data, operationId: v.op, currentState: '', nextTodo: '', createdAt: t, updatedAt: t, statusChangedAt: t, stateUpdatedAt: '', nextUpdatedAt: ''};
         db.fields.push(nf); db.history.push({id: uid(), fieldId: nf.id, fromOpId: null, toOpId: v.op, at: t, note: ''});
-        save(); closeSheet(); location.hash = '#/field/' + nf.id; toast('Field added');
+        localStorage.setItem(SEL_KEY, nf.id); save(); closeSheet(); location.hash = '#/field/' + nf.id; toast('Field added');
       } else { Object.assign(f, data); touch(f); save(); closeSheet(); render(); toast('Saved'); }
     });
   });
@@ -287,6 +347,7 @@ document.addEventListener('click', e => {
   const del = (list, what) => { if (confirm(`Delete this ${what}?`)) { db[list] = db[list].filter(x => x.id !== id); if (f) touch(f); save(); render(); toast('Deleted'); } };
   switch (b.dataset.act) {
     case 'add-field': return fieldForm();
+    case 'clear-sel': return selectField('');
     case 'edit-field': return fieldForm(f);
     case 'status': return statusPicker(f);
     case 'edit-text': return editText(f, b.dataset.key);
