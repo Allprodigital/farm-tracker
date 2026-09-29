@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Farm Tracker</title>
-<meta name="description" content="Farm Tracker by All Pro Digital: field status, next steps, notes, spray and harvest records, and tractor maintenance.">
+<meta name="description" content="Farm Tracker by All Pro Digital: field status, next steps, notes, spray and harvest records, tractor maintenance, voice notes and photos.">
 <meta name="theme-color" content="#1F3A24">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -15,6 +15,7 @@
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="print.css" media="print">
 </head>
 <body>
 <div id="splash" role="status" aria-label="Farm Tracker by All Pro Digital">
@@ -34,6 +35,17 @@
 </nav>
 <div id="sheet" class="sheet hidden" aria-hidden="true"><div class="panel" role="dialog" aria-modal="true"></div></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="voice" class="voice-panel hidden" role="dialog" aria-live="polite"></div>
+<div id="viewer" class="viewer hidden" role="dialog" aria-label="Photo"></div>
+<div id="print" aria-hidden="true"></div>
+<input type="file" id="cam-input" accept="image/*" capture="environment" hidden>
+<input type="file" id="lib-input" accept="image/*" multiple hidden>
+<input type="file" id="restore-input" accept=".json,application/json" hidden>
+<script src="lib/photos.js"></script>
+<script src="lib/voice.js"></script>
+<script src="lib/reminders.js"></script>
+<script src="lib/backup.js"></script>
+<script src="lib/print.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 /* Farm Tracker (milestone 1 + tractor maintenance) by All Pro Digital, a Valley Pro Logistics LLC company.
    Single-file vanilla JS app. Data lives on this device in localStorage (key: farmtracker.v1). */
 'use strict';
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const KEY = 'farmtracker.v1';
 const PRESETS = [
   ['discing', 'Discing', '#8a5a2b'], ['plowing', 'Plowing', '#6d4c2f'], ['cultivating', 'Cultivating', '#9a6b12'],
@@ -168,7 +168,8 @@ function openSheet(html, bind) {
   const s = $('#sheet'), p = $('.panel', s); p.innerHTML = html; s.classList.remove('hidden'); s.setAttribute('aria-hidden', 'false');
   bind && bind(p); const first = p.querySelector('[autofocus]'); if (first) setTimeout(() => first.focus(), 50);
 }
-function closeSheet() { const s = $('#sheet'); s.classList.add('hidden'); s.setAttribute('aria-hidden', 'true'); $('.panel', s).innerHTML = ''; }
+let sheetOnClose = null;
+function closeSheet() { if (sheetOnClose) { const c = sheetOnClose; sheetOnClose = null; c(); } const s = $('#sheet'); s.classList.add('hidden'); s.setAttribute('aria-hidden', 'true'); $('.panel', s).innerHTML = ''; }
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet' || e.target.closest('[data-close]')) closeSheet(); });
 
 /* ---------- screens ---------- */
@@ -186,8 +187,13 @@ function render() {
   const onDetail = m && (h.startsWith('#/field/') ? field(m[1]) : tractor(m[1]));
   if (!onDetail && tab !== '#/about') lastTab = tab;
   document.querySelectorAll('.tabs a').forEach(a => { const on = a.getAttribute('href') === tab; a.classList.toggle('active', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
-  window.scrollTo(0, 0);
+  document.body.classList.toggle('has-taskbar', !!onDetail);
+  updateTabBadge(); hydratePhotos($('#view'));
+  if (onDetail) buildPrint(h.startsWith('#/field/') ? 'field' : 'tractor', m[1]); // ready for an instant Print tap
+  if (!keepScroll) window.scrollTo(0, 0); keepScroll = false;
 }
+let keepScroll = false;
+const rerender = () => { keepScroll = true; const y = scrollY; render(); scrollTo(0, y); };
 window.addEventListener('hashchange', render);
 
 const sampleBanner = compact => !hasSamples() ? '' : compact ? `<div class="sample-banner compact"><span><b>Sample data loaded</b> so you can try the app.</span><button class="danger edit" data-act="clear-samples">Remove</button></div>` : `<div class="sample-banner"><b>Sample fields and tractors are loaded.</b> They are here so you can try the app. Add your own, then remove the samples.
@@ -228,7 +234,7 @@ function matches(q) {
 function viewHome() {
   document.title = 'Farm Tracker';
   const sel = selectedField(), tsel = selectedTractor();
-  $('#view').innerHTML = `${sampleBanner(true)}
+  $('#view').innerHTML = `${reminderBanner()}${backupBanner()}${sampleBanner(true)}
     <section class="home-sec" aria-labelledby="q-label">
     <div class="search-wrap">
       <div class="sec-head"><label for="q" id="q-label" class="search-label">Find a field</label><button class="edit" data-act="add-field">+ Add field</button></div>
@@ -271,6 +277,25 @@ function viewHome() {
   sugg.addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) { selectField(b.dataset.pick); toast('Showing ' + field(b.dataset.pick).name); } });
   $('#pick').addEventListener('change', e => selectField(e.target.value));
 }
+
+
+const ICON = {
+  mic: MIC_SVG,
+  cam: '<svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  log: '<svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>',
+  print: '<svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M7 9V3h10v6"/><path d="M5 17H3v-8h18v8h-2"/><path d="M7 14h10v7H7z"/></svg>',
+  lib: '<svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 17 5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.6"/></svg>',
+  cal: '<svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>'
+};
+const taskbar = kind => `<nav class="taskbar" aria-label="Quick actions">
+  <button type="button" data-act="tb-voice">${ICON.mic}<span>Voice note</span></button>
+  <button type="button" data-act="tb-photo">${ICON.cam}<span>Photo</span></button>
+  <button type="button" data-act="tb-log">${ICON.log}<span>${kind === 'field' ? 'Status' : 'Log'}</span></button>
+  <button type="button" data-act="tb-print">${ICON.print}<span>Print</span></button></nav>`;
+const photoBtns = ctx => `<button type="button" class="tool" data-act="${ctx}-cam">${ICON.cam}<span>Camera</span></button><button type="button" class="tool" data-act="${ctx}-lib">${ICON.lib}<span>Library</span></button>`;
+const drafts = {}; // unsaved note text + photos per field, kept across re-renders
+const draftFor = id => drafts[id] || (drafts[id] = {text: '', photos: []});
+const backupBanner = () => backupDue() ? `<div class="sample-banner compact backup-banner" role="status"><span><b>${backupDays() == null ? 'Not backed up yet' : `Last backup: ${backupDays()} days ago`}</b> Your records live only on this phone.</span><button class="primary edit" data-act="backup">Back up</button></div>` : '';
 
 /* ---------- tractor screens ---------- */
 const TSEL_KEY = 'farmtracker.selectedTractor';
@@ -322,10 +347,6 @@ function viewTractor(t) {
       <button class="primary wide" style="margin-top:12px" data-act="upd-hours">Update hours</button>
     </div>
     <div class="card">
-      <h2>Log work</h2>
-      <div class="two"><button class="primary big-act" data-act="log-service">Log service</button><button class="big-act repair" data-act="log-repair">Log repair</button></div>
-    </div>
-    <div class="card">
       <div class="card-head"><h2>Service intervals</h2><button class="edit" data-act="add-interval">+ Add</button></div>
       ${ivs.length ? `<ul class="items ivs">${ivs.map(({iv, st}) => `<li class="iv iv-${st.level}"><div class="grow">
           <div class="row split"><b class="iv-name">${esc(iv.name)}</b>${pill(st.level)}</div>
@@ -333,6 +354,7 @@ function viewTractor(t) {
           <div class="small">Last done: ${[num(iv.lastDoneHours) != null ? hrs(iv.lastDoneHours) + ' hrs' : '', iv.lastDoneDate ? fmtDate(iv.lastDoneDate) : ''].filter(Boolean).map(esc).join(' · ') || '<span class="empty">not recorded</span>'}</div>
           <div class="iv-status">${esc(st.text)}</div>
           <div class="row" style="margin-top:8px"><button class="primary grow" data-act="done-interval" data-id="${iv.id}">Mark done</button><button data-act="edit-interval" data-id="${iv.id}">Edit</button></div>
+          <button class="cal-btn" data-act="ics" data-id="${iv.id}">${ICON.cal}<span>Add to calendar</span></button>
         </div></li>`).join('')}</ul>`
       : `<p class="empty">No intervals yet. Add the ones from your operator's manual (oil, filters, grease...).</p>`}
     </div>
@@ -341,14 +363,14 @@ function viewTractor(t) {
       ${tl.length ? `<ul class="timeline">${tl.map(x => x.k === 'e' ? `<li style="--op:${x.e.type === 'repair' ? '#8a3f2b' : '#2f6b2f'}">
           <div class="row split"><span class="tl-what">${x.e.type === 'repair' ? 'Repair' : 'Service'}: ${esc(x.e.work)}</span><button class="x" data-act="del-entry" data-id="${x.e.id}" aria-label="Delete entry">×</button></div>
           <div class="small"><b>${esc(fmtDate(x.e.date))}</b>${num(x.e.hours) != null ? ' · ' + hrs(x.e.hours) + ' hrs' : ''}${num(x.e.cost) != null ? ' · ' + money(x.e.cost) : ''}</div>
-          ${x.e.parts ? `<div class="small">Parts: ${esc(x.e.parts)}</div>` : ''}${x.e.notes ? `<div class="small">${esc(x.e.notes)}</div>` : ''}
+          ${x.e.parts ? `<div class="small">Parts: ${esc(x.e.parts)}</div>` : ''}${x.e.notes ? `<div class="small">${esc(x.e.notes)}</div>` : ''}${thumbs(x.e.photoIds, 'maint:' + x.e.id)}
           <div class="stamp">Logged ${when(x.e.createdAt)}</div></li>`
         : `<li style="--op:#8a8f86"><div class="row split"><span class="tl-what muted">Hours: ${hrs(x.h.hours)}</span><button class="x" data-act="del-reading" data-id="${x.h.id}" aria-label="Delete hours reading">×</button></div>
           <div class="stamp">${esc(fmtDate(x.h.date))}${x.h.note ? ' · ' + esc(x.h.note) : ''} · logged ${esc(fmt(x.h.at))}</div></li>`).join('')}</ul>`
       : '<p class="empty">Nothing logged yet.</p>'}
     </div>
     <p class="stamp" style="text-align:center">Last updated ${when(t.updatedAt)}</p>
-    <button class="danger wide" data-act="del-tractor">Delete this tractor</button>`;
+    <button class="danger wide" data-act="del-tractor">Delete this tractor</button>${taskbar('tractor')}`;
 }
 
 function tractorForm(t) {
@@ -390,14 +412,15 @@ function hoursForm(t) {
   });
 }
 
-function logForm(t, type, intervalId) {
-  const ivs = intervalsOf(t); const iv = intervalId && ivs.find(i => i.id === intervalId);
+function logForm(t, type, intervalId, opts = {}) {
+  const ivs = intervalsOf(t); const iv = intervalId && ivs.find(i => i.id === intervalId); let pending = []; let saved = false;
   openSheet(`<form id="lf"><h2>Log ${type === 'repair' ? 'a repair' : 'service'}</h2>
     <div class="seg" role="radiogroup" aria-label="Type"><label class="${type !== 'repair' ? 'on' : ''}"><input type="radio" name="type" value="service" ${type !== 'repair' ? 'checked' : ''}>Service</label>
       <label class="${type === 'repair' ? 'on' : ''}"><input type="radio" name="type" value="repair" ${type === 'repair' ? 'checked' : ''}>Repair</label></div>
     <div id="iv-wrap" class="${type === 'repair' ? 'hidden' : ''}"><label for="l-iv">Service item (resets its interval)</label>
       <select id="l-iv" name="intervalId"><option value="">None / other</option>${ivs.map(i => `<option value="${i.id}" ${iv && iv.id === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></div>
-    <label for="l-work">What was done</label><textarea id="l-work" name="work" required placeholder="${type === 'repair' ? 'e.g. Replaced leaking hydraulic hose' : 'e.g. Changed engine oil & filter'}" ${iv ? '' : 'autofocus'}>${iv ? esc(iv.name.replace(/\s*\(example\)$/, '')) : ''}</textarea>
+    <label for="l-work">What was done</label><textarea id="l-work" name="work" placeholder="${type === 'repair' ? 'e.g. Replaced leaking hydraulic hose' : 'e.g. Changed engine oil & filter'}" ${iv ? '' : 'autofocus'}>${iv ? esc(iv.name.replace(/\s*\(example\)$/, '')) : ''}</textarea>
+    <div class="tools">${micBtn('l-work')}${photoBtns('log')}</div><div id="log-photos"></div>
     <div class="two"><div><label for="l-date">Date</label><input id="l-date" name="date" type="date" required value="${todayStr()}"></div>
       <div><label for="l-hours">Hours</label><input id="l-hours" name="hours" inputmode="decimal" value="${esc(t.currentHours ?? '')}"></div></div>
     <label for="l-parts">Parts (optional)</label><input id="l-parts" name="parts" placeholder="e.g. Oil filter, 5 gal 15W-40">
@@ -405,6 +428,13 @@ function logForm(t, type, intervalId) {
     <label for="l-notes">Notes (optional)</label><input id="l-notes" name="notes">
     <div class="sheet-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save</button></div></form>`, p => {
     const f = $('#lf', p);
+    const showPending = () => { $('#log-photos', p).innerHTML = thumbs(pending, 'pending-log'); hydratePhotos(p); };
+    const addPhotos = ids => { pending.push(...ids); showPending(); };
+    p.addEventListener('click', e => { const b = e.target.closest('[data-act="log-cam"],[data-act="log-lib"]'); if (b) pickPhotos(b.dataset.act === 'log-cam', addPhotos);
+      const v = e.target.closest('[data-view-photo][data-owner="pending-log"]'); if (v) openViewer(v.dataset.viewPhoto, async () => { pending = pending.filter(x => x !== v.dataset.viewPhoto); await dropPhotos([v.dataset.viewPhoto]); showPending(); }); });
+    sheetOnClose = () => { if (!saved) dropPhotos(pending); };
+    if (opts.voice) startVoice($('#l-work', p));
+    if (opts.photo) pickPhotos(false, addPhotos);
     f.querySelectorAll('input[name=type]').forEach(r => r.addEventListener('change', () => {
       f.querySelectorAll('.seg label').forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
       $('#iv-wrap', p).classList.toggle('hidden', r.value === 'repair' && r.checked); $('h2', p).textContent = r.value === 'repair' ? 'Log a repair' : 'Log service'; }));
@@ -413,7 +443,9 @@ function logForm(t, type, intervalId) {
       e.preventDefault(); const v = Object.fromEntries(new FormData(f)); for (const k in v) v[k] = String(v[k]).trim();
       const n = nowIso(); const h = num(v.hours.replace(/,/g, '')); const cost = num(v.cost.replace(/[$,]/g, ''));
       const intervalId = v.type === 'service' && v.intervalId ? v.intervalId : null;
-      db.maint.push({id: uid(), tractorId: t.id, date: v.date, hours: h, type: v.type, work: v.work, parts: v.parts, cost, notes: v.notes, intervalId, createdAt: n});
+      if (!v.work && pending.length) v.work = v.type === 'repair' ? 'Repair (see photo)' : 'Service (see photo)';
+      if (!v.work) { $('#l-work', p).focus(); return; }
+      db.maint.push({id: uid(), tractorId: t.id, date: v.date, hours: h, type: v.type, work: v.work, parts: v.parts, cost, notes: v.notes, intervalId, photoIds: pending, createdAt: n}); saved = true;
       if (intervalId) { const i = ivs.find(x => x.id === intervalId); if (h != null) i.lastDoneHours = h; i.lastDoneDate = v.date; i.updatedAt = n; }
       if (h != null && (num(t.currentHours) == null || h > t.currentHours)) { t.currentHours = h; t.hoursUpdatedAt = n; db.hours.push({id: uid(), tractorId: t.id, date: v.date, hours: h, at: n, note: 'From ' + v.type + ' log'}); }
       t.updatedAt = n; save(); closeSheet(); render(); toast(v.type === 'repair' ? 'Repair logged' : 'Service logged');
@@ -474,11 +506,13 @@ function viewField(f) {
     </div>
     ${textCard('currentState', 'Where it stands now', f.currentState, f.stateUpdatedAt, 'e.g. Disced once, clods still big on the low end')}
     ${textCard('nextTodo', 'Next to do', f.nextTodo, f.nextUpdatedAt, 'e.g. Second pass with the disc after it dries out')}
-    <div class="card">
+    <div class="card" id="notes-card">
       <h2>Notes</h2>
-      <textarea id="note-text" placeholder="Type a note for this field" aria-label="New note"></textarea>
-      <button class="primary wide" style="margin-top:8px" data-act="add-note">Add note</button>
-      ${notes.length ? `<ul class="items">${notes.map(n => `<li><div><div class="txt">${esc(n.text)}</div><div class="stamp">${when(n.createdAt)}</div></div>
+      <textarea id="note-text" placeholder="Type or tap Voice to talk" aria-label="New note">${esc(draftFor(f.id).text)}</textarea>
+      <div class="tools">${micBtn('note-text', 'field')}${photoBtns('note')}</div>
+      <div id="pending-photos">${thumbs(draftFor(f.id).photos, 'pending-note')}</div>
+      <button class="primary wide" style="margin-top:8px" data-act="add-note">Save note</button>
+      ${notes.length ? `<ul class="items">${notes.map(n => `<li><div class="grow"><div class="txt">${esc(n.text)}</div>${thumbs(n.photoIds, 'note:' + n.id)}<div class="stamp">${when(n.createdAt)}</div></div>
         <button class="x" data-act="del-note" data-id="${n.id}" aria-label="Delete note">×</button></li>`).join('')}</ul>` : '<p class="empty">No notes yet.</p>'}
     </div>
     <div class="card">
@@ -500,7 +534,7 @@ function viewField(f) {
         <li style="--op:#bbb"><div class="tl-what">Field added</div><div class="stamp">${when(f.createdAt)}</div></li></ul>
     </div>
     <p class="stamp" style="text-align:center">Last updated ${when(f.updatedAt)}</p>
-    <button class="danger wide" data-act="del-field">Delete this field</button>`;
+    <button class="danger wide" data-act="del-field">Delete this field</button>${taskbar('field')}`;
 }
 
 function textCard(key, title, text, stamp, ph) {
@@ -521,11 +555,24 @@ function viewAbout() {
       <p class="muted" style="margin:0">a Valley Pro Logistics LLC company</p>
       <p class="muted small">Version ${VERSION} · Demo · Sister app of Service Tracker</p>
     </div>
-    <div class="card">
-      <h2>Your data</h2>
-      <p>Everything you enter is saved <b>on this phone only</b> (in this browser). It is not sent anywhere yet. Clearing browser data will erase it, so use Export to keep a copy.</p>
-      <div class="row"><button class="grow" data-act="export">Export a copy</button><button class="grow" data-act="reset-samples">Reload sample data</button></div>
+    <div class="card" id="backup-card">
+      <h2>Backup</h2>
+      <p style="margin-top:0">Everything is saved <b>on this phone only</b>. If the phone is lost or browser data is cleared, it's gone, so save a backup file somewhere safe (Files, Google Drive, email). Photos are included.</p>
+      <div class="backup-status ${backupDue() ? 'due' : ''}">Last backed up: <b>${lastBackup() ? esc(fmt(lastBackup())) + ' (' + esc(ago(lastBackup())) + ')' : 'never'}</b>${backupDue() ? (lastBackup() ? '<br>It has been over a week. Back up now.' : '<br>Back up now so nothing is lost.') : ''}</div>
+      <button class="primary wide big-act" data-act="backup">Back up now</button>
+      <button class="wide" style="margin-top:10px" data-act="restore">Restore from backup</button>
+      <p class="tiny muted">Restoring replaces what's on this phone with the backup file.</p>
     </div>
+    <div class="card">
+      <h2>Service reminders</h2>
+      <p style="margin-top:0">Farm Tracker shows a reminder on Home and a count on the Tractors tab when service is due soon or overdue.</p>
+      ${!canNotify() ? `<p class="small">${IS_IOS ? 'Phone alerts on iPhone need iOS 16.4+ and Farm Tracker added to the Home Screen (Share › Add to Home Screen), then opened from the icon.' : 'This browser does not support phone alerts.'}</p>`
+        : Notification.permission === 'granted' ? '<p class="small"><b>Phone alerts are on.</b> You get an alert when you open the app and something is due.</p><button class="wide" data-act="test-alert">Send a test alert</button>'
+        : Notification.permission === 'denied' ? '<p class="small">Phone alerts are blocked for this site. Turn them on in your browser or phone settings.</p>'
+        : '<button class="primary wide" data-act="enable-alerts">Turn on phone alerts</button>'}
+      <p class="tiny muted">Alerts show when the app is opened. To get alerts while the app is closed, use <b>Add to calendar</b> on each service item.</p>
+    </div>
+    <div class="card"><h2>Sample data</h2><button class="wide" data-act="reset-samples">Reload sample data</button></div>
     <div class="card">
       <h2>Custom operations</h2>
       ${custom.length ? `<ul class="items">${custom.map(o => `<li><div class="txt"><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></div>
@@ -584,6 +631,7 @@ function setStatus(f, opId, note) {
 function editText(f, key) {
   const card = $('#card-' + key); const title = key === 'currentState' ? 'Where it stands now' : 'Next to do';
   card.innerHTML = `<h2>${title}</h2><textarea id="t-${key}" aria-label="${title}">${esc(f[key])}</textarea>
+    <div class="tools">${micBtn('t-' + key, 'field')}</div>
     <div class="sheet-actions"><button data-act="cancel-text">Cancel</button><button class="primary" data-act="save-text" data-key="${key}">Save</button></div>`;
   const ta = $('textarea', card); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
 }
@@ -610,6 +658,15 @@ function recordForm(kind, f) {
 /* ---------- actions (event delegation) ---------- */
 document.addEventListener('click', e => {
   const go = e.target.closest('[data-go]'); if (go) { location.hash = go.dataset.go; return; }
+  const mic = e.target.closest('[data-mic]');
+  if (mic) { const ta = document.getElementById(mic.dataset.mic); const fm = (location.hash.match(/^#\/field\/([\w-]+)/) || [])[1];
+    return startVoice(ta, text => { if (mic.dataset.ctx === 'field' && fm && field(fm)) suggestStatus(field(fm), text); }); }
+  const vp = e.target.closest('[data-view-photo]');
+  if (vp && vp.dataset.owner !== 'pending-log') { const pid = vp.dataset.viewPhoto, [kind, oid] = vp.dataset.owner.split(':');
+    return openViewer(pid, async () => {
+      if (kind === 'pending-note') { const fm = (location.hash.match(/^#\/field\/([\w-]+)/) || [])[1]; const d = draftFor(fm); d.photos = d.photos.filter(x => x !== pid); }
+      else { const rec = (kind === 'note' ? db.notes : db.maint).find(x => x.id === oid); if (rec) { rec.photoIds = (rec.photoIds || []).filter(x => x !== pid); save(); } }
+      await dropPhotos([pid]); rerender(); toast('Photo deleted'); }); }
   const b = e.target.closest('[data-act]'); if (!b || b.closest('#sheet')) return;
   const m = (location.hash.match(/^#\/field\/([\w-]+)/) || [])[1]; const f = m && field(m); const id = b.dataset.id;
   const tm = (location.hash.match(/^#\/tractor\/([\w-]+)/) || [])[1]; const t = tm && tractor(tm);
@@ -626,35 +683,56 @@ document.addEventListener('click', e => {
     case 'add-interval': return intervalForm(t);
     case 'edit-interval': return intervalForm(t, db.intervals.find(x => x.id === id));
     case 'done-interval': return logForm(t, 'service', id);
-    case 'del-entry': return del('maint', 'log entry');
+    case 'del-entry': { const en = db.maint.find(x => x.id === id); if (en && confirm('Delete this log entry' + ((en.photoIds || []).length ? ' and its photos' : '') + '?')) { db.maint = db.maint.filter(x => x.id !== id); dropPhotos(en.photoIds); t.updatedAt = nowIso(); save(); rerender(); toast('Deleted'); } return; }
     case 'del-reading': return del('hours', 'hours reading (current hours stay as they are)');
-    case 'del-tractor': if (confirm(`Delete "${t.name}" and its whole maintenance log? This cannot be undone.`)) { const tid = t.id; db.tractors = db.tractors.filter(x => x.id !== tid);
+    case 'del-tractor': if (confirm(`Delete "${t.name}" and its whole maintenance log? This cannot be undone.`)) { const tid = t.id; db.tractors = db.tractors.filter(x => x.id !== tid); dropPhotos(db.maint.filter(x => x.tractorId === tid).flatMap(x => x.photoIds || []));
       for (const k of TRACTOR_KEYS) db[k] = db[k].filter(x => x.tractorId !== tid); save(); location.hash = lastTab === '#/tractors' ? '#/tractors' : '#/'; toast('Tractor deleted'); } return;
     case 'edit-field': return fieldForm(f);
     case 'status': return statusPicker(f);
     case 'edit-text': return editText(f, b.dataset.key);
     case 'cancel-text': return render();
     case 'save-text': { const k = b.dataset.key; const val = $('#t-' + k).value.trim(); if (val !== (f[k] || '')) { f[k] = val; f[k === 'currentState' ? 'stateUpdatedAt' : 'nextUpdatedAt'] = nowIso(); touch(f); save(); toast('Saved'); } return render(); }
-    case 'add-note': { const ta = $('#note-text'); const text = ta.value.trim(); if (!text) { ta.focus(); return; } db.notes.push({id: uid(), fieldId: f.id, text, createdAt: nowIso()}); touch(f); save(); render(); return toast('Note added'); }
-    case 'del-note': return del('notes', 'note');
+    case 'add-note': { const ta = $('#note-text'); const text = ta.value.trim(); const d = draftFor(f.id); if (!text && !d.photos.length) { ta.focus(); return; }
+      db.notes.push({id: uid(), fieldId: f.id, text, photoIds: d.photos, createdAt: nowIso()}); delete drafts[f.id]; touch(f); save(); rerender(); return toast('Note saved'); }
+    case 'del-note': { const n = db.notes.find(x => x.id === id); if (n && confirm('Delete this note' + ((n.photoIds || []).length ? ' and its photos' : '') + '?')) { db.notes = db.notes.filter(x => x.id !== id); dropPhotos(n.photoIds); touch(f); save(); rerender(); toast('Deleted'); } return; }
+    case 'note-cam': case 'note-lib': return pickPhotos(b.dataset.act === 'note-cam', ids => { draftFor(f.id).photos.push(...ids); const el = $('#pending-photos'); if (el) { el.innerHTML = thumbs(draftFor(f.id).photos, 'pending-note'); hydratePhotos(el); } toast(ids.length > 1 ? 'Photos added. Tap Save note.' : 'Photo added. Tap Save note.'); });
+    case 'tb-voice': if (f) { const ta = $('#note-text'); $('#notes-card').scrollIntoView({block: 'start'}); scrollBy(0, -70); return startVoice(ta, text => suggestStatus(f, text)); }
+      return logForm(t, 'service', null, {voice: true});
+    case 'tb-photo': if (f) return pickPhotos(false, ids => { draftFor(f.id).photos.push(...ids); rerender(); $('#notes-card').scrollIntoView({block: 'start'}); scrollBy(0, -70); toast('Photo added. Add a few words and tap Save note.'); });
+      return logForm(t, 'service', null, {photo: true});
+    case 'tb-log': if (f) return statusPicker(f);
+      return openSheet(`<h2>Log for ${esc(t.name)}</h2><div class="choice"><button class="primary big-act" data-c="hours">Update hours</button><button class="big-act" data-c="service">Log service</button><button class="big-act repair" data-c="repair">Log repair</button></div>
+        <div class="sheet-actions"><button type="button" data-close>Cancel</button></div>`, p => p.querySelectorAll('[data-c]').forEach(x => x.addEventListener('click', () => x.dataset.c === 'hours' ? hoursForm(t) : logForm(t, x.dataset.c))));
+    case 'tb-print': return printRecord(f ? 'field' : 'tractor', (f || t).id);
+    case 'ics': return addToCalendar(t, db.intervals.find(x => x.id === id));
+    case 'backup': return backupNow();
+    case 'restore': return restorePick();
+    case 'enable-alerts': return enableAlerts();
+    case 'test-alert': return maybeNotify(true).then(ok => toast(ok ? 'Test alert sent' : 'Nothing is due, so no alert was sent'));
     case 'add-spray': return recordForm('spray', f);
     case 'add-harvest': return recordForm('harvest', f);
     case 'del-spray': return del('sprays', 'spray record');
     case 'del-harvest': return del('harvests', 'harvest record');
-    case 'del-field': if (confirm(`Delete "${f.name}" and all its notes and records? This cannot be undone.`)) { const fid = f.id; db.fields = db.fields.filter(x => x.id !== fid);
+    case 'del-field': if (confirm(`Delete "${f.name}" and all its notes and records? This cannot be undone.`)) { const fid = f.id; db.fields = db.fields.filter(x => x.id !== fid); dropPhotos(db.notes.filter(x => x.fieldId === fid).flatMap(x => x.photoIds || [])); delete drafts[fid];
       for (const k of ['history', 'notes', 'sprays', 'harvests']) db[k] = db[k].filter(x => x.fieldId !== fid); save(); location.hash = '#/'; toast('Field deleted'); } return;
-    case 'clear-samples': if (confirm('Remove all sample fields and tractors? Your own stay.')) { removeSamples(db); save(); render(); toast('Samples removed'); } return;
-    case 'reset-samples': if (confirm('Load the sample fields and tractors again? Your own stay.')) { removeSamples(db); const s = seed();
+    case 'clear-samples': if (confirm('Remove all sample fields and tractors? Your own stay.')) { dropPhotos(samplePhotoIds()); removeSamples(db); save(); render(); toast('Samples removed'); } return;
+    case 'reset-samples': if (confirm('Load the sample fields and tractors again? Your own stay.')) { dropPhotos(samplePhotoIds()); removeSamples(db); const s = seed();
       for (const k of ['fields', 'tractors', ...FIELD_KEYS, ...TRACTOR_KEYS]) db[k] = db[k].concat(s[k]); save(); location.hash = '#/'; render(); toast('Sample data loaded'); } return;
     case 'del-op': { const inUse = db.fields.some(x => x.operationId === id) || db.history.some(h => h.toOpId === id || h.fromOpId === id);
       if (inUse) return alert('This operation is used in a field or its history, so it stays. You can still stop picking it.');
       if (confirm('Remove this custom operation?')) { db.operations = db.operations.filter(o => o.id !== id); save(); render(); } return; }
-    case 'export': { const blob = new Blob([JSON.stringify(db, null, 2)], {type: 'application/json'}); const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = `farm-tracker-${todayStr()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); return; }
   }
 });
 
+document.addEventListener('input', e => { if (e.target.id === 'note-text') { const fm = (location.hash.match(/^#\/field\/([\w-]+)/) || [])[1]; if (fm) draftFor(fm).text = e.target.value; } });
+function flushOpenEdits(f) { for (const k of ['currentState', 'nextTodo']) { const ta = document.getElementById('t-' + k); if (ta && ta.value.trim() !== (f[k] || '')) { f[k] = ta.value.trim(); f[k === 'currentState' ? 'stateUpdatedAt' : 'nextUpdatedAt'] = nowIso(); touch(f); } } }
+const samplePhotoIds = () => { const fids = new Set(db.fields.filter(x => x.sample).map(x => x.id)), tids = new Set(db.tractors.filter(x => x.sample).map(x => x.id));
+  return [...db.notes.filter(n => fids.has(n.fieldId)), ...db.maint.filter(m => tids.has(m.tractorId))].flatMap(x => x.photoIds || []); };
+// Clean up photos that were picked but never saved (e.g. app closed mid-note).
+async function gcPhotos() { try { const used = new Set([...db.notes, ...db.maint].flatMap(x => x.photoIds || [])); for (const k of await PhotoDB.keys()) if (!used.has(k)) await PhotoDB.del(k); } catch (e) { console.warn(e); } }
+
 /* ---------- start ---------- */
 render();
+gcPhotos(); setTimeout(maybeNotify, 1500);
 setTimeout(() => { const s = $('#splash'); s.classList.add('gone'); setTimeout(() => s.remove(), 400); }, 1200);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

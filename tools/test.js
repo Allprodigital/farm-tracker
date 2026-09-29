@@ -101,7 +101,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok((await p.$eval('#l-work', e => e.value)) === 'Fuel filters', 'Mark done pre-fills the service form');
   await p.type('#l-parts', 'Fuel filters x2'); await p.type('#l-cost', '88.50'); await p.click('#lf button[type=submit]'); await sleep(300);
   ok((await p.$$eval('.ivs li.iv-over', a => a.length)) === 0, 'logging the service reset the overdue interval');
-  await tapAct('log-repair'); await p.type('#l-work', 'Fixed cab door latch'); await p.$eval('#l-hours', e => e.value = ''); await p.type('#l-hours', '1851'); await p.click('#lf button[type=submit]'); await sleep(300);
+  await tapAct('tb-log'); await p.click('#sheet [data-c="repair"]'); await sleep(250); await p.type('#l-work', 'Fixed cab door latch'); await p.$eval('#l-hours', e => e.value = ''); await p.type('#l-hours', '1851'); await p.click('#lf button[type=submit]'); await sleep(300);
   ok((await p.$eval('.timeline .tl-what', e => e.textContent)).includes('Repair: Fixed cab door latch'), 'repair logged at top of history');
   ok((await p.$eval('.hours-big', e => e.textContent)).includes('1,851'), 'repair hours bumped current hours');
   await tapAct('add-interval'); await p.type('#i-name', 'Coolant'); await p.type('#i-ed', '730'); await p.type('#i-ld', '01012026'); await p.click('#if button[type=submit]'); await sleep(300);
@@ -114,11 +114,11 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   await tapAct('del-tractor'); await sleep(400);
   ok((await p.$$eval('#view .field-card', a => a.length)) === 2, 'tractor deleted, back on Tractors tab');
   // --- fixed bars never cover buttons: scroll each page to the bottom and check the last control clears the fab/tab bar ---
-  for (const route of ['#/', '#/fields', '#/tractors', '#/tractor/' + tid2, '#/about']) {
+  for (const route of ['#/', '#/fields', '#/tractors', '#/tractor/' + tid2, '#/field/' + nid, '#/about']) {
     await p.evaluate(r => { location.hash = r; }, route); await sleep(350);
     await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await sleep(150);
-    const r2 = await p.evaluate(() => { const ctl = [...document.querySelectorAll('#view button:not(.fab), #view a.btn, #view a.field-card, #view select, #view input')].pop();
-      const fab = document.querySelector('#view .fab'); const lim = Math.min(document.querySelector('.tabs').getBoundingClientRect().top, fab ? fab.getBoundingClientRect().top : 1e9);
+    const r2 = await p.evaluate(() => { const ctl = [...document.querySelectorAll('#view button:not(.fab), #view a.btn, #view a.field-card, #view select, #view input')].filter(x => !x.closest('.taskbar')).pop();
+      const fab = document.querySelector('#view .fab'), tb = document.querySelector('#view .taskbar'); const lim = Math.min(document.querySelector('.tabs').getBoundingClientRect().top, fab ? fab.getBoundingClientRect().top : 1e9, tb ? tb.getBoundingClientRect().top : 1e9);
       return {bottom: ctl.getBoundingClientRect().bottom, lim}; });
     ok(r2.bottom <= r2.lim, `bottom bars clear the last button on ${route.slice(0, 12)} (${Math.round(r2.bottom)} <= ${Math.round(r2.lim)})`);
   }
