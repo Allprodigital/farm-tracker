@@ -28,8 +28,16 @@ Branding: app/PWA name and page title "Farm Tracker"; the launch (splash) screen
 - Stored on the phone (localStorage). 4 sample fields, clearly marked SAMPLE, removable in one tap. Export to JSON.
 - Installable PWA (Add to Home Screen), works offline.
 
+## v1.2: Tractor maintenance log (milestone 2, pulled forward)
+- Home now has three options: **Find a field** (search), **Or pick from your list** (field dropdown), and **Tractor maintenance log** with **Pick from your tractors**. Picking a tractor shows only that tractor's card: name, current hours, next service due (red OVERDUE / amber DUE SOON / green OK), last entry, "Open maintenance log" and Clear. The last tractor picked is remembered separately from the field (`farmtracker.selectedTractor`).
+- Bottom tabs: Home, All Fields, **Tractors**, About. The Tractors tab lists every tractor (most urgent service first) and adds new ones; edit/delete from the tractor's page.
+- Tractor page: big hours readout + **Update hours**; **Log service** / **Log repair** quick form (date, hours, what was done, parts, cost, notes; a service can pick a service item, which resets that interval); service intervals with status and **Mark done**; timestamped maintenance history (entries + hours readings).
+- Due logic: an interval is due at `lastDoneHours + everyHours` and/or `lastDoneDate + everyDays`, whichever comes first. **Overdue** if past either; **Due soon** within min(25 hrs, 20% of the interval) or min(14 days, 25% of the interval).
+- Sample tractors (John Deere 8335R, John Deere 4440) are tagged SAMPLE; their hours, intervals and entries are made-up examples, not John Deere specs. "Remove sample data" removes sample fields and tractors together.
+- Still to come in M2: link a field status change to the tractor/implement used; implements (disc, planter, shredder) as equipment too; reminders.
+
 ## Later milestones
-- **M2 Equipment**: equipment list, hours readings, service intervals with "due soon/overdue", repair log; link a status change to the tractor/implement used.
+- **M2 Equipment**: tractors, hours, service intervals and maintenance log shipped in v1.2 (above). Remaining: implements, link equipment to field work, reminders.
 - **M3 Expenses and sales**: expense and sale entries, optional field link, per-field and per-season totals, CSV export.
 - **M4 Accounts and sync**: sign-in, cloud backup, use on multiple phones; shared with Service Tracker's server stack.
 - **M5 Multiple users**: owner + hands, who-did-what on each entry, permissions.
@@ -70,16 +78,16 @@ Times are ISO 8601 strings (UTC); dates are `YYYY-MM-DD`. IDs are short random s
 
 Later: `Season`/crop year on Field so a field keeps a crop history year to year.
 
-### Milestone 2: Equipment
-**Equipment**: `id`, `name` ("8335R"), `make` ("John Deere"), `model`, `year?`, `serial?`, `type` (tractor, combine, sprayer, implement...), `currentHours` (number), `notes`, `createdAt`, `updatedAt`.
+### Milestone 2: Equipment (built in v1.2)
+**Tractor** (Equipment): `id`, `name` ("John Deere 8335R"), `make`, `model`, `year`, `serial` (serial/VIN, optional), `currentHours` (number), `hoursUpdatedAt`, `notes`, `sample`, `createdAt`, `updatedAt`. Later: `type` (tractor, combine, sprayer, implement) to cover all equipment.
 
-**HoursReading**: `id`, `equipmentId`, `hours` (number), `at` (datetime), `note`.
+**HoursReading**: `id`, `tractorId`, `date` (date), `hours` (number), `at` (datetime logged), `note`.
 
-**ServiceInterval**: `id`, `equipmentId`, `task` ("Engine oil & filter"), `everyHours?` (number), `everyDays?` (number), `lastDoneHours?`, `lastDoneAt?` → app computes next due and due-soon/overdue.
+**ServiceInterval**: `id`, `tractorId`, `name` ("Engine oil & filter"), `everyHours?` (number), `everyDays?` (number), `lastDoneHours?`, `lastDoneDate?`, `createdAt`, `updatedAt`. Computed (not stored): next due hours/date, hours/days left, status `over | soon | ok | none`.
 
-**RepairLog**: `id`, `equipmentId`, `date`, `hours?`, `problem`, `work` (what was done), `parts` (text or list), `cost?` (number), `laborHours?`, `doneBy`, `serviceIntervalId?` (if it satisfied a scheduled service), `expenseId?`.
+**MaintenanceEntry** (RepairLog): `id`, `tractorId`, `date`, `hours?` (at service), `type` (`service | repair`), `work` (what was done), `parts`, `cost?` (USD), `notes`, `intervalId?` (a service that satisfies an interval resets its last-done hours/date), `createdAt`. Later: `expenseId?` (M3).
 
-Link: `StatusChange.equipmentIds?` (what was run on the field).
+Later link: `StatusChange.equipmentIds?` (what was run on the field).
 
 ### Milestone 3: Expenses and sales
 **Expense**: `id`, `date`, `category` (seed, chemical, fertilizer, fuel, parts/repairs, labor, custom hire, rent, insurance, other), `vendor`, `description`, `amount` (number, USD), `fieldId?`, `equipmentId?`, `sprayRecordId?`, `receiptPhoto?`, `createdAt`.
@@ -87,4 +95,4 @@ Link: `StatusChange.equipmentIds?` (what was run on the field).
 **Sale**: `id`, `date`, `crop`, `buyer` (elevator/gin), `quantity` (number), `unit` (bu, cwt, lb, tons, bales), `price` (per unit), `amount` (total), `fieldId?`, `harvestRecordId?`, `ticketNo?`, `notes`, `createdAt`.
 
 ## Tech (M1)
-Static PWA: `index.html`, `styles.css`, `app.js`, `sw.js`, `manifest.webmanifest`, `icons/`. No build step, no server. Data key `farmtracker.v1` in localStorage (last Home selection: `farmtracker.selectedField`) (move to IndexedDB when photos arrive). Hosted on GitHub Pages.
+Static PWA: `index.html`, `styles.css`, `app.js`, `sw.js`, `manifest.webmanifest`, `icons/`. No build step, no server. Data key `farmtracker.v1` in localStorage (last Home selections: `farmtracker.selectedField`, `farmtracker.selectedTractor`) (move to IndexedDB when photos arrive). Hosted on GitHub Pages.

@@ -18,6 +18,22 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok(!!(await p.$('.home-empty')), 'Home empty state shown');
   await shot('1-home-empty');
   await p.click('.tabs a[href="#/fields"]'); await sleep(400); await shot('4-all-fields'); await p.click('.tabs a[href="#/"]'); await sleep(400);
+  // --- tractors (pristine screenshots first) ---
+  const tid = await p.$$eval('#tpick option', o => o.find(x => x.textContent.startsWith('John Deere 8335R')).value);
+  await p.select('#tpick', tid); await sleep(400);
+  ok((await p.$$eval('.home-result .field-card', a => a.length)) === 1, 'Home shows ONE tractor card');
+  ok((await p.$eval('.home-sec:nth-of-type(2) .fc-name', e => e.textContent)).includes('8335R'), 'tractor card is the 8335R');
+  ok((await p.$eval('.home-sec:nth-of-type(2) .st', e => e.textContent)) === 'Overdue', 'next service highlighted Overdue');
+  await p.evaluate(() => document.querySelector('#t-label').scrollIntoView({block: 'start'})); await p.evaluate(() => scrollBy(0, -70)); await sleep(150);
+  await shot('7-home-tractor-selected'); await p.evaluate(() => scrollTo(0, 0));
+  await p.reload({waitUntil: 'networkidle0'}); await sleep(1500);
+  ok((await p.$eval('#tpick', e => e.selectedOptions[0].textContent)).startsWith('John Deere 8335R') && !!(await p.$('.home-sec:first-of-type .home-empty')), 'tractor remembered after reload, separately from field');
+  await p.click('.tabs a[href="#/tractors"]'); await sleep(400);
+  ok((await p.$$eval('#view .field-card', a => a.length)) === 2, 'Tractors tab lists 2 tractors');
+  ok(await p.$eval('.tabs a.active', e => e.textContent.includes('Tractors')), 'Tractors tab active');
+  ok((await p.$eval('#view .field-card .fc-name', e => e.textContent)).includes('8335R'), 'Tractors tab puts the overdue tractor first');
+  await shot('9-tractors-tab');
+  await p.click('.tabs a[href="#/"]'); await sleep(400);
   const tap = async sel => { await p.$eval(sel, e => e.scrollIntoView({block: 'center'})); await sleep(80); await p.click(sel); };
   const tapAct = async a => { await tap(`[data-act="${a}"]`); await sleep(250); };
   // search suggestions
@@ -28,7 +44,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok((await p.$$eval('#sugg [data-pick]', a => a.length)) === 1, 'search "canal" suggests 1');
   await p.click('#sugg [data-pick]'); await sleep(400);
   ok((await p.$eval('.home-result .fc-name', e => e.textContent)).includes('Canal Field'), 'picked suggestion shows ONE card (Canal Field)');
-  ok((await p.$$eval('.home-result .field-card', a => a.length)) === 1, 'exactly one card on Home');
+  ok((await p.$$eval('.home-sec:first-of-type .field-card', a => a.length)) === 1, 'exactly one field card on Home');
   await p.reload({waitUntil: 'networkidle0'}); await sleep(1500);
   ok((await p.$eval('.home-result .fc-name', e => e.textContent)).includes('Canal Field'), 'last selected field remembered after reload');
   // picker
@@ -66,6 +82,49 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok((await p.$eval('h1', e => e.textContent)).includes('Test Field 2'), 'field renamed');
   await tapAct('del-field'); await sleep(400);
   ok(!!(await p.$('.home-empty')), 'after deleting the selected field, Home shows empty state');
+  // --- tractor detail flows ---
+  await p.click('.tabs a[href="#/"]'); await sleep(300);
+  const tid2 = await p.$$eval('#tpick option', o => o.find(x => x.textContent.startsWith('John Deere 8335R')).value);
+  await p.select('#tpick', tid2); await sleep(300);
+  await tap('.home-sec:nth-of-type(2) a.btn'); await sleep(400);
+  ok((await p.$eval('h1', e => e.textContent)).includes('8335R'), 'Open maintenance log works');
+  ok((await p.$eval('.back', e => e.textContent)).includes('Home'), 'tractor back label says Home');
+  await sleep(1900); await shot('8-tractor-detail');
+  await p.evaluate(() => { const h = [...document.querySelectorAll('h2')].find(x => x.textContent === 'Service intervals'); h.scrollIntoView({block: 'start'}); scrollBy(0, -80); }); await sleep(150);
+  await shot('8b-tractor-detail-intervals');
+  await p.evaluate(() => { const h = [...document.querySelectorAll('h2')].find(x => x.textContent === 'Maintenance history'); h.scrollIntoView({block: 'start'}); scrollBy(0, -80); }); await sleep(150);
+  await shot('8c-tractor-detail-history'); await p.evaluate(() => scrollTo(0, 0));
+  await tapAct('upd-hours'); await p.type('#h-hours', '1850'); await p.click('#hf button[type=submit]'); await sleep(300);
+  ok((await p.$eval('.hours-big', e => e.textContent)).includes('1,850'), 'hours updated to 1,850');
+  const overdue = await p.$$eval('.ivs li.iv-over', a => a.length); ok(overdue === 1, 'one overdue interval before');
+  await tap('.ivs li.iv-over [data-act="done-interval"]'); await sleep(300);
+  ok((await p.$eval('#l-work', e => e.value)) === 'Fuel filters', 'Mark done pre-fills the service form');
+  await p.type('#l-parts', 'Fuel filters x2'); await p.type('#l-cost', '88.50'); await p.click('#lf button[type=submit]'); await sleep(300);
+  ok((await p.$$eval('.ivs li.iv-over', a => a.length)) === 0, 'logging the service reset the overdue interval');
+  await tapAct('log-repair'); await p.type('#l-work', 'Fixed cab door latch'); await p.$eval('#l-hours', e => e.value = ''); await p.type('#l-hours', '1851'); await p.click('#lf button[type=submit]'); await sleep(300);
+  ok((await p.$eval('.timeline .tl-what', e => e.textContent)).includes('Repair: Fixed cab door latch'), 'repair logged at top of history');
+  ok((await p.$eval('.hours-big', e => e.textContent)).includes('1,851'), 'repair hours bumped current hours');
+  await tapAct('add-interval'); await p.type('#i-name', 'Coolant'); await p.type('#i-ed', '730'); await p.type('#i-ld', '01012026'); await p.click('#if button[type=submit]'); await sleep(300);
+  ok((await p.$$eval('.ivs li', a => a.map(x => x.textContent))).some(x => x.includes('Coolant')), 'interval added');
+  await tapAct('edit-tractor'); await p.$eval('#t-name', e => e.value = ''); await p.type('#t-name', 'Big Green'); await p.click('#tf button[type=submit]'); await sleep(300);
+  ok((await p.$eval('h1', e => e.textContent)).includes('Big Green'), 'tractor renamed');
+  await p.click('.tabs a[href="#/tractors"]'); await sleep(300);
+  await tapAct('add-tractor'); await p.type('#t-name', 'Test Tractor'); await p.type('#t-hours', '100'); await p.click('#tf button[type=submit]'); await sleep(400);
+  ok((await p.$eval('.hours-big', e => e.textContent)).includes('100'), 'new tractor with starting hours');
+  await tapAct('del-tractor'); await sleep(400);
+  ok((await p.$$eval('#view .field-card', a => a.length)) === 2, 'tractor deleted, back on Tractors tab');
+  // --- fixed bars never cover buttons: scroll each page to the bottom and check the last control clears the fab/tab bar ---
+  for (const route of ['#/', '#/fields', '#/tractors', '#/tractor/' + tid2, '#/about']) {
+    await p.evaluate(r => { location.hash = r; }, route); await sleep(350);
+    await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await sleep(150);
+    const r2 = await p.evaluate(() => { const ctl = [...document.querySelectorAll('#view button:not(.fab), #view a.btn, #view a.field-card, #view select, #view input')].pop();
+      const fab = document.querySelector('#view .fab'); const lim = Math.min(document.querySelector('.tabs').getBoundingClientRect().top, fab ? fab.getBoundingClientRect().top : 1e9);
+      return {bottom: ctl.getBoundingClientRect().bottom, lim}; });
+    ok(r2.bottom <= r2.lim, `bottom bars clear the last button on ${route.slice(0, 12)} (${Math.round(r2.bottom)} <= ${Math.round(r2.lim)})`);
+  }
+  await p.evaluate(() => { location.hash = '#/'; }); await sleep(300);
+  await tapAct('clear-samples'); await sleep(300);
+  ok(!(await p.$('.sample-banner')) && (await p.$$eval('#tpick option', o => o.length)) === 1, 'Remove samples clears sample fields AND tractors');
   await p.click('.tabs a[href="#/about"]'); await sleep(400);
   const html = await p.content();
   ok(html.includes('by <b>All Pro Digital</b>') && html.includes('Valley Pro Logistics LLC'), 'About branding');

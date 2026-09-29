@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Farm Tracker",
   "short_name": "Farm Tracker",
-  "description": "Farm Tracker by All Pro Digital: field status, next steps, notes, spray and harvest records.",
+  "description": "Farm Tracker by All Pro Digital: field status, next steps, notes, spray and harvest records, and tractor maintenance.",
   "lang": "en",
   "start_url": "./#/",
   "scope": "./",

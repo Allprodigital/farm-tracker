@@ -1,7 +1,7 @@
-/* Farm Tracker (milestone 1) by All Pro Digital, a Valley Pro Logistics LLC company.
+/* Farm Tracker (milestone 1 + tractor maintenance) by All Pro Digital, a Valley Pro Logistics LLC company.
    Single-file vanilla JS app. Data lives on this device in localStorage (key: farmtracker.v1). */
 'use strict';
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const KEY = 'farmtracker.v1';
 const PRESETS = [
   ['discing', 'Discing', '#8a5a2b'], ['plowing', 'Plowing', '#6d4c2f'], ['cultivating', 'Cultivating', '#9a6b12'],
@@ -19,15 +19,93 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const nowIso = () => new Date().toISOString();
 const todayStr = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 
+/* ---------- equipment (milestone 2 pulled forward) ---------- */
+const TRACTOR_KEYS = ['hours', 'intervals', 'maint'];
+const FIELD_KEYS = ['history', 'notes', 'sprays', 'harvests'];
+const COMMON_INTERVALS = ['Engine oil & filter', 'Hydraulic / transmission filter', 'Fuel filters', 'Air filter', 'Grease fittings', 'Coolant', 'Front axle oil', 'Cab air filter', 'Belts & hoses check'];
+const localYmd = d => new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const daysAgoYmd = n => localYmd(new Date(Date.now() - n * 864e5));
+const ymdUtc = ymd => { const [y, m, d] = ymd.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+const addDays = (ymd, n) => new Date(ymdUtc(ymd) + n * 864e5).toISOString().slice(0, 10);
+const daysBetween = (a, b) => Math.round((ymdUtc(b) - ymdUtc(a)) / 864e5);
+const num = v => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
+const hrs = n => n == null ? '?' : Number(n).toLocaleString('en-US', {maximumFractionDigits: 1});
+const money = n => n == null ? '' : '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+function seedTractors(d) {
+  const ago = (days, hours = 0) => new Date(Date.now() - (days * 24 + hours) * 36e5).toISOString();
+  const addT = (t, readings, ivs, entries) => {
+    const id = uid() + 't' + d.tractors.length;
+    d.tractors.push({id, sample: true, serial: '', notes: '', createdAt: ago(readings[0][0]), ...t,
+      currentHours: readings[readings.length - 1][1], hoursUpdatedAt: ago(readings[readings.length - 1][0]), updatedAt: ago(readings[readings.length - 1][0])});
+    for (const [days, h] of readings) d.hours.push({id: uid(), tractorId: id, date: daysAgoYmd(days), hours: h, at: ago(days), note: ''});
+    const ivIds = {};
+    for (const iv of ivs) { const iid = uid(); ivIds[iv.key] = iid;
+      d.intervals.push({id: iid, tractorId: id, name: iv.name, everyHours: iv.everyHours ?? null, everyDays: iv.everyDays ?? null,
+        lastDoneHours: iv.lastHours ?? null, lastDoneDate: iv.lastDays != null ? daysAgoYmd(iv.lastDays) : '', createdAt: ago(200), updatedAt: ago(iv.lastDays ?? 200)}); }
+    for (const e of entries) d.maint.push({id: uid(), tractorId: id, date: daysAgoYmd(e.days), hours: e.hours, type: e.type, work: e.work, parts: e.parts || '',
+      cost: e.cost ?? null, notes: e.notes || '', intervalId: e.iv ? ivIds[e.iv] : null, createdAt: ago(e.days, -2)});
+  };
+  addT({name: 'John Deere 8335R', make: 'John Deere', model: '8335R', year: '2018'},
+    [[60, 1765], [30, 1790], [12, 1822], [1, 1842]],
+    [{key: 'oil', name: 'Engine oil & filter (example)', everyHours: 250, everyDays: 365, lastHours: 1600, lastDays: 95},
+     {key: 'fuel', name: 'Fuel filters (example)', everyHours: 500, lastHours: 1300, lastDays: 200},
+     {key: 'hyd', name: 'Hydraulic / transmission filter (example)', everyHours: 750, lastHours: 1200, lastDays: 200},
+     {key: 'air', name: 'Air filter check (example)', everyDays: 30, lastDays: 20},
+     {key: 'grease', name: 'Grease fittings (example)', everyHours: 50, lastHours: 1820, lastDays: 8}],
+    [{days: 95, hours: 1600, type: 'service', iv: 'oil', work: 'Changed engine oil & filter (example)', parts: 'Oil filter, 5 gal engine oil', cost: 185},
+     {days: 20, hours: 1810, type: 'service', iv: 'air', work: 'Checked and blew out air filter (example)'},
+     {days: 12, hours: 1822, type: 'repair', work: 'Replaced cracked hydraulic hose on rear remote (example)', parts: 'Hydraulic hose + fittings', cost: 145, notes: 'Hose was rubbing on the drawbar frame. Added a clamp.'},
+     {days: 8, hours: 1820, type: 'service', iv: 'grease', work: 'Greased all fittings (example)'}]);
+  addT({name: 'John Deere 4440', make: 'John Deere', model: '4440', year: '1980'},
+    [[90, 9010], [40, 9060], [3, 9120]],
+    [{key: 'oil', name: 'Engine oil & filter (example)', everyHours: 150, lastHours: 9050, lastDays: 45},
+     {key: 'grease', name: 'Grease fittings (example)', everyHours: 10, lastHours: 9118, lastDays: 3}],
+    [{days: 45, hours: 9050, type: 'service', iv: 'oil', work: 'Changed engine oil & filter (example)', parts: 'Oil filter, oil', cost: 95},
+     {days: 40, hours: 9060, type: 'repair', work: 'Rebuilt water pump (example)', parts: 'Water pump kit, gasket', cost: 320},
+     {days: 3, hours: 9118, type: 'service', iv: 'grease', work: 'Greased front axle and 3-point (example)'}]);
+}
+function removeSamples(d) {
+  const fids = new Set(d.fields.filter(x => x.sample).map(x => x.id)), tids = new Set(d.tractors.filter(x => x.sample).map(x => x.id));
+  d.fields = d.fields.filter(x => !x.sample); d.tractors = d.tractors.filter(x => !x.sample);
+  for (const k of FIELD_KEYS) d[k] = d[k].filter(x => !fids.has(x.fieldId));
+  for (const k of TRACTOR_KEYS) d[k] = d[k].filter(x => !tids.has(x.tractorId));
+}
+const tractor = id => db.tractors.find(t => t.id === id);
+const hasSamples = () => db.fields.some(f => f.sample) || db.tractors.some(t => t.sample);
+const LEVEL = {over: ['Overdue', 0], soon: ['Due soon', 1], ok: ['OK', 2], none: ['Not tracked', 3]};
+function ivStatus(iv, t) {
+  const parts = []; let score = Infinity, level = 'ok', any = false;
+  const eh = num(iv.everyHours), ed = num(iv.everyDays), lh = num(iv.lastDoneHours);
+  if (eh && lh != null) { any = true; const left = lh + eh - (num(t.currentHours) || 0);
+    parts.push(left < 0 ? `overdue by ${hrs(-left)} hrs` : `due in ${hrs(left)} hrs (at ${hrs(lh + eh)})`); score = Math.min(score, left / eh);
+    if (left < 0) level = 'over'; else if (left <= Math.min(25, eh * .2)) level = 'soon'; }
+  if (ed && iv.lastDoneDate) { any = true; const due = addDays(iv.lastDoneDate, ed); const left = daysBetween(todayStr(), due);
+    parts.push(left < 0 ? `overdue by ${-left} day${left === -1 ? '' : 's'}` : left === 0 ? 'due today' : `due in ${left} day${left === 1 ? '' : 's'} (${fmtDate(due)})`); score = Math.min(score, left / ed);
+    if (left < 0) level = 'over'; else if (left <= Math.min(14, ed * .25) && level !== 'over') level = 'soon'; }
+  if (!any) return {level: 'none', text: 'Set "last done" to track this', score: 99};
+  return {level, text: parts.join(' · '), score};
+}
+const ivRule = iv => [num(iv.everyHours) ? `every ${hrs(iv.everyHours)} hrs` : '', num(iv.everyDays) ? `every ${iv.everyDays} days` : ''].filter(Boolean).join(' or ') || 'no interval set';
+const intervalsOf = t => db.intervals.filter(i => i.tractorId === t.id);
+function nextDue(t) {
+  return intervalsOf(t).map(iv => ({iv, st: ivStatus(iv, t)})).sort((a, b) => LEVEL[a.st.level][1] - LEVEL[b.st.level][1] || a.st.score - b.st.score)[0] || null;
+}
+const entriesOf = t => db.maint.filter(e => e.tractorId === t.id).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+const tractorSub = t => [t.make, t.model, t.year].filter(Boolean).map(esc).join(' · ');
+const pill = level => `<span class="st st-${level}">${LEVEL[level][0]}</span>`;
+
 /* ---------- storage ---------- */
 let db = load();
-function blank() { return {version: 1, fields: [], operations: PRESETS.map(([id, name, color]) => ({id, name, color, builtIn: true})), history: [], notes: [], sprays: [], harvests: []}; }
+function blank() { return {version: 1, fields: [], operations: PRESETS.map(([id, name, color]) => ({id, name, color, builtIn: true})), history: [], notes: [], sprays: [], harvests: [], tractors: [], hours: [], intervals: [], maint: []}; }
 function load() {
   try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && d.version) return fix(d); } catch (e) { console.warn(e); }
   const d = seed(); persist(d); return d;
 }
-function fix(d) { const b = blank(); for (const k of Object.keys(b)) if (!Array.isArray(d[k]) && k !== 'version') d[k] = b[k];
-  for (const p of b.operations) if (!d.operations.some(o => o.id === p.id)) d.operations.push(p); return d; }
+function fix(d) { const b = blank(); const hadTractors = Array.isArray(d.tractors); for (const k of Object.keys(b)) if (!Array.isArray(d[k]) && k !== 'version') d[k] = b[k];
+  for (const p of b.operations) if (!d.operations.some(o => o.id === p.id)) d.operations.push(p);
+  if (!hadTractors) { if (d.fields.some(f => f.sample)) seedTractors(d); persist(d); } // v1.2 upgrade: phones still on sample data get the sample tractors too
+  return d; }
 function persist(d = db) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { alert('Could not save on this phone: ' + e.message); } }
 const save = () => persist(db);
 
@@ -66,6 +144,7 @@ function seed() {
        currentState: 'Sitting fallow since spring.', stateUpdatedAt: ago(14),
        nextTodo: 'Pull a soil test before we fertilize for spring sorghum.', nextUpdatedAt: ago(14)},
       [{to: 'idle', at: ago(150)}]);
+  seedTractors(d);
   return d;
 }
 
@@ -96,20 +175,23 @@ $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet' || e.ta
 const SEL_KEY = 'farmtracker.selectedField';
 let lastTab = '#/';
 function render() {
-  const h = location.hash || '#/'; const m = h.match(/^#\/field\/([\w-]+)/);
+  const h = location.hash || '#/'; const m = h.match(/^#\/field\/([\w-]+)/) || h.match(/^#\/tractor\/([\w-]+)/);
   let tab;
-  if (m && field(m[1])) { viewField(field(m[1])); tab = lastTab; }
+  if (m && h.startsWith('#/field/') && field(m[1])) { viewField(field(m[1])); tab = lastTab; }
+  else if (m && h.startsWith('#/tractor/') && tractor(m[1])) { viewTractor(tractor(m[1])); tab = lastTab; }
+  else if (h.startsWith('#/tractors')) { viewTractors(); tab = '#/tractors'; }
   else if (h.startsWith('#/about')) { viewAbout(); tab = '#/about'; }
   else if (h.startsWith('#/fields')) { viewAll(); tab = '#/fields'; }
   else { viewHome(); tab = '#/'; }
-  if (!m && tab !== '#/about') lastTab = tab;
+  const onDetail = m && (h.startsWith('#/field/') ? field(m[1]) : tractor(m[1]));
+  if (!onDetail && tab !== '#/about') lastTab = tab;
   document.querySelectorAll('.tabs a').forEach(a => { const on = a.getAttribute('href') === tab; a.classList.toggle('active', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', render);
 
-const sampleBanner = compact => !db.fields.some(f => f.sample) ? '' : compact ? `<div class="sample-banner compact"><span><b>Sample fields loaded</b> so you can try the app.</span><button class="danger edit" data-act="clear-samples">Remove</button></div>` : `<div class="sample-banner"><b>These are sample fields.</b> They are here so you can try the app. Add your own, then remove the samples.
-  <div class="row" style="margin-top:10px"><button class="danger" data-act="clear-samples">Remove sample fields</button></div></div>`;
+const sampleBanner = compact => !hasSamples() ? '' : compact ? `<div class="sample-banner compact"><span><b>Sample data loaded</b> so you can try the app.</span><button class="danger edit" data-act="clear-samples">Remove</button></div>` : `<div class="sample-banner"><b>Sample fields and tractors are loaded.</b> They are here so you can try the app. Add your own, then remove the samples.
+  <div class="row" style="margin-top:10px"><button class="danger" data-act="clear-samples">Remove sample data</button></div></div>`;
 const addBtn = (secondary) => `<button class="${secondary ? 'fab secondary' : 'primary fab'}" data-act="add-field">+ Add field</button>`;
 const sortedFields = () => [...db.fields].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
 const byName = () => [...db.fields].sort((a, b) => a.name.localeCompare(b.name, 'en', {numeric: true}));
@@ -145,12 +227,13 @@ function matches(q) {
 
 function viewHome() {
   document.title = 'Farm Tracker';
-  const sel = selectedField();
+  const sel = selectedField(), tsel = selectedTractor();
   $('#view').innerHTML = `${sampleBanner(true)}
+    <section class="home-sec" aria-labelledby="q-label">
     <div class="search-wrap">
-      <label for="q" class="search-label">Find a field</label>
+      <div class="sec-head"><label for="q" id="q-label" class="search-label">Find a field</label><button class="edit" data-act="add-field">+ Add field</button></div>
       <div class="search-box"><svg class="search-ico" aria-hidden="true" viewBox="0 0 24 24" width="26" height="26"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>
-        <input id="q" type="search" placeholder="Search by field name or crop" autocomplete="off" enterkeyhint="search"
+        <input id="q" type="search" placeholder="Field name or crop" autocomplete="off" enterkeyhint="search"
           role="combobox" aria-expanded="false" aria-controls="sugg" aria-autocomplete="list"></div>
       <ul id="sugg" class="sugg hidden" role="listbox" aria-label="Matching fields"></ul>
     </div>
@@ -160,11 +243,21 @@ function viewHome() {
     <div class="home-result">
     ${sel ? `${fieldCard(sel, 'div')}
       <div class="row"><a class="btn primary grow" href="#/field/${sel.id}">Open full detail ›</a><button data-act="clear-sel" aria-label="Clear selected field">Clear</button></div>`
-    : `<div class="card home-empty"><img src="icons/icon.svg" alt="" width="72" height="72">
-      <p class="bigtext"><b>Pick a field to see where it stands.</b></p>
-      <p class="muted">${db.fields.length ? 'Search above or choose from the list. Tap <b>All Fields</b> below to see every field at once.' : 'You have no fields yet. Tap <b>+ Add field</b> to add your first one.'}</p></div>`}
-    </div>
-    ${addBtn(!!sel)}`;
+    : `<div class="card home-empty"><p class="bigtext"><b>Pick a field to see where it stands.</b></p>
+      <p class="muted small">${db.fields.length ? 'Search above or choose from the list. <b>All Fields</b> below shows every field.' : 'No fields yet. Tap <b>+ Add field</b> to add your first one.'}</p></div>`}
+    </div></section>
+    <section class="home-sec" aria-labelledby="t-label">
+      <div class="sec-head"><h2 id="t-label" class="search-label">Tractor maintenance log</h2><button class="edit" data-act="add-tractor">+ Add tractor</button></div>
+      <label for="tpick">Pick from your tractors</label>
+      <select id="tpick" class="picker"><option value="">Choose a tractor…</option>
+        ${byTractorName().map(t => { const nd = nextDue(t); return `<option value="${t.id}" ${tsel && tsel.id === t.id ? 'selected' : ''}>${esc(t.name)}${nd && nd.st.level === 'over' ? ' · OVERDUE' : nd && nd.st.level === 'soon' ? ' · due soon' : ''}</option>`; }).join('')}</select>
+      <div class="home-result">
+      ${tsel ? `${tractorCard(tsel, 'div')}
+        <div class="row"><a class="btn primary grow" href="#/tractor/${tsel.id}">Open maintenance log ›</a><button data-act="clear-tsel" aria-label="Clear selected tractor">Clear</button></div>`
+      : `<div class="card home-empty"><p class="bigtext"><b>Pick a tractor to see hours and what service is due.</b></p>
+        <p class="muted small">${db.tractors.length ? '<b>Tractors</b> below lists them all.' : 'No tractors yet. Tap <b>+ Add tractor</b>.'}</p></div>`}
+      </div></section>`;
+  $('#tpick').addEventListener('change', e => selectTractor(e.target.value));
   const q = $('#q'), sugg = $('#sugg');
   const show = () => {
     const list = matches(q.value); const open = q.value.trim() !== '';
@@ -177,6 +270,181 @@ function viewHome() {
   q.addEventListener('keydown', e => { if (e.key === 'Enter') { const m = matches(q.value); if (m[0]) { e.preventDefault(); selectField(m[0].id); } } if (e.key === 'Escape') { q.value = ''; show(); } });
   sugg.addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) { selectField(b.dataset.pick); toast('Showing ' + field(b.dataset.pick).name); } });
   $('#pick').addEventListener('change', e => selectField(e.target.value));
+}
+
+/* ---------- tractor screens ---------- */
+const TSEL_KEY = 'farmtracker.selectedTractor';
+function selectedTractor() { const id = localStorage.getItem(TSEL_KEY); return id ? tractor(id) : null; }
+function selectTractor(id) { id ? localStorage.setItem(TSEL_KEY, id) : localStorage.removeItem(TSEL_KEY); viewHome(); }
+const byTractorName = () => [...db.tractors].sort((a, b) => a.name.localeCompare(b.name, 'en', {numeric: true}));
+
+function tractorCard(t, tag = 'a') {
+  const nd = nextDue(t), le = entriesOf(t)[0]; const lvl = nd ? nd.st.level : 'none';
+  const inner = `<div class="fc-top"><div><div class="fc-name">${esc(t.name)} ${t.sample ? '<span class="tag-sample">Sample</span>' : ''}</div>
+      ${tractorSub(t) ? `<div class="fc-crop">${tractorSub(t)}</div>` : ''}</div>
+      <div class="hrs-chip"><b>${hrs(t.currentHours)}</b><span>hrs</span></div></div>
+    <div class="due-box due-${lvl}"><div class="row split"><b>Next service</b>${pill(lvl)}</div>
+      ${nd ? `<div class="due-name">${esc(nd.iv.name)}</div><div class="due-text">${esc(nd.st.text)}</div>` : '<div class="due-text">No service intervals set up yet.</div>'}</div>
+    <div class="fc-line small"><b>Last entry:</b> ${le ? `${esc(fmtDate(le.date))} · ${le.type === 'repair' ? 'Repair' : 'Service'} · ${esc(le.work)}` : '<span class="empty">none yet</span>'}</div>
+    <div class="fc-foot">Hours updated ${esc(ago(t.hoursUpdatedAt))}</div>`;
+  const style = `--op:${{over: '#a61b1b', soon: '#b45309', ok: '#2f6b2f', none: '#777'}[lvl]}`;
+  return tag === 'a' ? `<a class="field-card" style="${style}" href="#/tractor/${t.id}">${inner}</a>` : `<div class="field-card" style="${style}">${inner}</div>`;
+}
+
+function viewTractors() {
+  document.title = 'Tractors · Farm Tracker';
+  const rank = t => { const nd = nextDue(t); return nd ? LEVEL[nd.st.level][1] : 3; };
+  const list = byTractorName().sort((a, b) => rank(a) - rank(b)); // most urgent service first
+  $('#view').innerHTML = `${sampleBanner()}
+    <div class="row split"><h1>Tractors</h1><span class="muted small">${list.length} tractor${list.length === 1 ? '' : 's'}</span></div>
+    ${list.length ? `<ul class="fields">${list.map(t => `<li>${tractorCard(t)}</li>`).join('')}</ul>`
+      : `<div class="card"><p class="bigtext">No tractors yet.</p><p class="muted">Tap <b>+ Add tractor</b> below to add one.</p></div>`}
+    <button class="primary fab" data-act="add-tractor">+ Add tractor</button>`;
+}
+
+function viewTractor(t) {
+  document.title = t.name + ' · Farm Tracker';
+  const ivs = intervalsOf(t).map(iv => ({iv, st: ivStatus(iv, t)})).sort((a, b) => LEVEL[a.st.level][1] - LEVEL[b.st.level][1] || a.st.score - b.st.score);
+  const tl = [...entriesOf(t).map(e => ({k: 'e', d: e.date, at: e.createdAt, e})), ...db.hours.filter(h => h.tractorId === t.id).map(h => ({k: 'h', d: h.date, at: h.at, h}))]
+    .sort((a, b) => b.d.localeCompare(a.d) || b.at.localeCompare(a.at));
+  $('#view').innerHTML = `
+    <button class="back" data-go="${lastTab}">‹ ${lastTab === '#/tractors' ? 'Tractors' : 'Home'}</button>
+    ${t.sample ? `<div class="sample-banner"><b>Sample tractor.</b> Hours, service intervals and entries are made-up examples, not John Deere specs. Use your operator's manual for real intervals.</div>` : ''}
+    <div class="card">
+      <h1>${esc(t.name)} ${t.sample ? '<span class="tag-sample">Sample</span>' : ''}</h1>
+      <dl class="meta">${[['Make', t.make], ['Model', t.model], ['Year', t.year], ['Serial / VIN', t.serial]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('') || '<dt>Details</dt><dd class="empty">not set</dd>'}</dl>
+      <button class="wide" data-act="edit-tractor">Edit tractor</button>
+    </div>
+    <div class="card">
+      <h2>Hours</h2>
+      <div class="hours-big">${hrs(t.currentHours)} <span>hrs</span></div>
+      <div class="stamp">Updated ${when(t.hoursUpdatedAt)}</div>
+      <button class="primary wide" style="margin-top:12px" data-act="upd-hours">Update hours</button>
+    </div>
+    <div class="card">
+      <h2>Log work</h2>
+      <div class="two"><button class="primary big-act" data-act="log-service">Log service</button><button class="big-act repair" data-act="log-repair">Log repair</button></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Service intervals</h2><button class="edit" data-act="add-interval">+ Add</button></div>
+      ${ivs.length ? `<ul class="items ivs">${ivs.map(({iv, st}) => `<li class="iv iv-${st.level}"><div class="grow">
+          <div class="row split"><b class="iv-name">${esc(iv.name)}</b>${pill(st.level)}</div>
+          <div class="small">${esc(ivRule(iv))}</div>
+          <div class="small">Last done: ${[num(iv.lastDoneHours) != null ? hrs(iv.lastDoneHours) + ' hrs' : '', iv.lastDoneDate ? fmtDate(iv.lastDoneDate) : ''].filter(Boolean).map(esc).join(' · ') || '<span class="empty">not recorded</span>'}</div>
+          <div class="iv-status">${esc(st.text)}</div>
+          <div class="row" style="margin-top:8px"><button class="primary grow" data-act="done-interval" data-id="${iv.id}">Mark done</button><button data-act="edit-interval" data-id="${iv.id}">Edit</button></div>
+        </div></li>`).join('')}</ul>`
+      : `<p class="empty">No intervals yet. Add the ones from your operator's manual (oil, filters, grease...).</p>`}
+    </div>
+    <div class="card">
+      <h2>Maintenance history</h2>
+      ${tl.length ? `<ul class="timeline">${tl.map(x => x.k === 'e' ? `<li style="--op:${x.e.type === 'repair' ? '#8a3f2b' : '#2f6b2f'}">
+          <div class="row split"><span class="tl-what">${x.e.type === 'repair' ? 'Repair' : 'Service'}: ${esc(x.e.work)}</span><button class="x" data-act="del-entry" data-id="${x.e.id}" aria-label="Delete entry">×</button></div>
+          <div class="small"><b>${esc(fmtDate(x.e.date))}</b>${num(x.e.hours) != null ? ' · ' + hrs(x.e.hours) + ' hrs' : ''}${num(x.e.cost) != null ? ' · ' + money(x.e.cost) : ''}</div>
+          ${x.e.parts ? `<div class="small">Parts: ${esc(x.e.parts)}</div>` : ''}${x.e.notes ? `<div class="small">${esc(x.e.notes)}</div>` : ''}
+          <div class="stamp">Logged ${when(x.e.createdAt)}</div></li>`
+        : `<li style="--op:#8a8f86"><div class="row split"><span class="tl-what muted">Hours: ${hrs(x.h.hours)}</span><button class="x" data-act="del-reading" data-id="${x.h.id}" aria-label="Delete hours reading">×</button></div>
+          <div class="stamp">${esc(fmtDate(x.h.date))}${x.h.note ? ' · ' + esc(x.h.note) : ''} · logged ${esc(fmt(x.h.at))}</div></li>`).join('')}</ul>`
+      : '<p class="empty">Nothing logged yet.</p>'}
+    </div>
+    <p class="stamp" style="text-align:center">Last updated ${when(t.updatedAt)}</p>
+    <button class="danger wide" data-act="del-tractor">Delete this tractor</button>`;
+}
+
+function tractorForm(t) {
+  const isNew = !t; t = t || {};
+  openSheet(`<form id="tf"><h2>${isNew ? 'Add a tractor' : 'Edit tractor'}</h2>
+    <label for="t-name">Name</label><input id="t-name" name="name" required value="${esc(t.name)}" placeholder="e.g. 8335R or Big Green" autocomplete="off" ${isNew ? 'autofocus' : ''}>
+    <div class="two"><div><label for="t-make">Make</label><input id="t-make" name="make" list="makes" value="${esc(t.make)}" placeholder="John Deere"></div>
+      <div><label for="t-model">Model</label><input id="t-model" name="model" value="${esc(t.model)}" placeholder="8335R"></div></div>
+    <datalist id="makes">${['John Deere', 'Case IH', 'New Holland', 'Kubota', 'Massey Ferguson', 'AGCO', 'Fendt', 'Mahindra'].map(c => `<option value="${c}">`).join('')}</datalist>
+    <div class="two"><div><label for="t-year">Year</label><input id="t-year" name="year" inputmode="numeric" value="${esc(t.year)}" placeholder="optional"></div>
+      ${isNew ? `<div><label for="t-hours">Current hours</label><input id="t-hours" name="hours" inputmode="decimal" placeholder="e.g. 1842"></div>` : '<div></div>'}</div>
+    <label for="t-serial">Serial / VIN (optional)</label><input id="t-serial" name="serial" value="${esc(t.serial)}" autocomplete="off">
+    <div class="sheet-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">${isNew ? 'Add tractor' : 'Save'}</button></div></form>`, p => {
+    $('#tf', p).addEventListener('submit', e => {
+      e.preventDefault(); const v = Object.fromEntries(new FormData(e.target)); for (const k in v) v[k] = v[k].trim(); if (!v.name) return;
+      const n = nowIso(); const data = {name: v.name, make: v.make, model: v.model, year: v.year, serial: v.serial};
+      if (isNew) {
+        const h = num(v.hours); const nt = {id: uid(), ...data, notes: '', currentHours: h, hoursUpdatedAt: h != null ? n : '', createdAt: n, updatedAt: n};
+        db.tractors.push(nt); if (h != null) db.hours.push({id: uid(), tractorId: nt.id, date: todayStr(), hours: h, at: n, note: 'Starting hours'});
+        localStorage.setItem(TSEL_KEY, nt.id); save(); closeSheet(); location.hash = '#/tractor/' + nt.id; toast('Tractor added');
+      } else { Object.assign(t, data); t.updatedAt = n; save(); closeSheet(); render(); toast('Saved'); }
+    });
+  });
+}
+
+function hoursForm(t) {
+  openSheet(`<form id="hf"><h2>Update hours</h2><p class="muted small" style="margin:0">Now: ${hrs(t.currentHours)} hrs</p>
+    <label for="h-hours">Hour meter reading</label><input id="h-hours" name="hours" inputmode="decimal" required autofocus placeholder="${esc(t.currentHours ?? '')}" class="huge-input">
+    <label for="h-date">Date</label><input id="h-date" name="date" type="date" required value="${todayStr()}">
+    <label for="h-note">Note (optional)</label><input id="h-note" name="note" placeholder="e.g. End of day, North 80">
+    <div class="sheet-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save hours</button></div></form>`, p => {
+    $('#hf', p).addEventListener('submit', e => {
+      e.preventDefault(); const v = Object.fromEntries(new FormData(e.target)); const h = num(v.hours.trim().replace(/,/g, ''));
+      if (h == null || h < 0) { alert('Enter the hour meter reading as a number.'); return; }
+      if (num(t.currentHours) != null && h < t.currentHours && !confirm(`${hrs(h)} is lower than the current ${hrs(t.currentHours)} hrs. Save anyway?`)) return;
+      const n = nowIso(); db.hours.push({id: uid(), tractorId: t.id, date: v.date, hours: h, at: n, note: v.note.trim()});
+      t.currentHours = h; t.hoursUpdatedAt = n; t.updatedAt = n; save(); closeSheet(); render(); toast(`Hours: ${hrs(h)}`);
+    });
+  });
+}
+
+function logForm(t, type, intervalId) {
+  const ivs = intervalsOf(t); const iv = intervalId && ivs.find(i => i.id === intervalId);
+  openSheet(`<form id="lf"><h2>Log ${type === 'repair' ? 'a repair' : 'service'}</h2>
+    <div class="seg" role="radiogroup" aria-label="Type"><label class="${type !== 'repair' ? 'on' : ''}"><input type="radio" name="type" value="service" ${type !== 'repair' ? 'checked' : ''}>Service</label>
+      <label class="${type === 'repair' ? 'on' : ''}"><input type="radio" name="type" value="repair" ${type === 'repair' ? 'checked' : ''}>Repair</label></div>
+    <div id="iv-wrap" class="${type === 'repair' ? 'hidden' : ''}"><label for="l-iv">Service item (resets its interval)</label>
+      <select id="l-iv" name="intervalId"><option value="">None / other</option>${ivs.map(i => `<option value="${i.id}" ${iv && iv.id === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></div>
+    <label for="l-work">What was done</label><textarea id="l-work" name="work" required placeholder="${type === 'repair' ? 'e.g. Replaced leaking hydraulic hose' : 'e.g. Changed engine oil & filter'}" ${iv ? '' : 'autofocus'}>${iv ? esc(iv.name.replace(/\s*\(example\)$/, '')) : ''}</textarea>
+    <div class="two"><div><label for="l-date">Date</label><input id="l-date" name="date" type="date" required value="${todayStr()}"></div>
+      <div><label for="l-hours">Hours</label><input id="l-hours" name="hours" inputmode="decimal" value="${esc(t.currentHours ?? '')}"></div></div>
+    <label for="l-parts">Parts (optional)</label><input id="l-parts" name="parts" placeholder="e.g. Oil filter, 5 gal 15W-40">
+    <div class="two"><div><label for="l-cost">Cost $ (optional)</label><input id="l-cost" name="cost" inputmode="decimal" placeholder="0.00"></div><div></div></div>
+    <label for="l-notes">Notes (optional)</label><input id="l-notes" name="notes">
+    <div class="sheet-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save</button></div></form>`, p => {
+    const f = $('#lf', p);
+    f.querySelectorAll('input[name=type]').forEach(r => r.addEventListener('change', () => {
+      f.querySelectorAll('.seg label').forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
+      $('#iv-wrap', p).classList.toggle('hidden', r.value === 'repair' && r.checked); $('h2', p).textContent = r.value === 'repair' ? 'Log a repair' : 'Log service'; }));
+    $('#l-iv', p).addEventListener('change', e => { const i = ivs.find(x => x.id === e.target.value); const w = $('#l-work', p); if (i && !w.value.trim()) w.value = i.name.replace(/\s*\(example\)$/, ''); });
+    f.addEventListener('submit', e => {
+      e.preventDefault(); const v = Object.fromEntries(new FormData(f)); for (const k in v) v[k] = String(v[k]).trim();
+      const n = nowIso(); const h = num(v.hours.replace(/,/g, '')); const cost = num(v.cost.replace(/[$,]/g, ''));
+      const intervalId = v.type === 'service' && v.intervalId ? v.intervalId : null;
+      db.maint.push({id: uid(), tractorId: t.id, date: v.date, hours: h, type: v.type, work: v.work, parts: v.parts, cost, notes: v.notes, intervalId, createdAt: n});
+      if (intervalId) { const i = ivs.find(x => x.id === intervalId); if (h != null) i.lastDoneHours = h; i.lastDoneDate = v.date; i.updatedAt = n; }
+      if (h != null && (num(t.currentHours) == null || h > t.currentHours)) { t.currentHours = h; t.hoursUpdatedAt = n; db.hours.push({id: uid(), tractorId: t.id, date: v.date, hours: h, at: n, note: 'From ' + v.type + ' log'}); }
+      t.updatedAt = n; save(); closeSheet(); render(); toast(v.type === 'repair' ? 'Repair logged' : 'Service logged');
+    });
+  });
+}
+
+function intervalForm(t, iv) {
+  const isNew = !iv; iv = iv || {};
+  openSheet(`<form id="if"><h2>${isNew ? 'Add service interval' : 'Edit service interval'}</h2>
+    <label for="i-name">Service item</label><input id="i-name" name="name" list="ivnames" required value="${esc(iv.name)}" placeholder="e.g. Engine oil & filter" ${isNew ? 'autofocus' : ''}>
+    <datalist id="ivnames">${COMMON_INTERVALS.map(c => `<option value="${c}">`).join('')}</datalist>
+    <p class="muted small" style="margin:8px 0 0">Due every… (fill one or both, from your operator's manual)</p>
+    <div class="two"><div><label for="i-eh">Hours</label><input id="i-eh" name="everyHours" inputmode="decimal" value="${esc(iv.everyHours ?? '')}" placeholder="e.g. 250"></div>
+      <div><label for="i-ed">Days</label><input id="i-ed" name="everyDays" inputmode="numeric" value="${esc(iv.everyDays ?? '')}" placeholder="e.g. 365"></div></div>
+    <p class="muted small" style="margin:8px 0 0">Last done</p>
+    <div class="two"><div><label for="i-lh">At hours</label><input id="i-lh" name="lastDoneHours" inputmode="decimal" value="${esc(iv.lastDoneHours ?? '')}" placeholder="${esc(t.currentHours ?? '')}"></div>
+      <div><label for="i-ld">On date</label><input id="i-ld" name="lastDoneDate" type="date" value="${esc(iv.lastDoneDate || '')}"></div></div>
+    <div class="sheet-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save</button></div>
+    ${isNew ? '' : '<button type="button" class="danger wide" style="margin-top:10px" id="i-del">Delete this interval</button>'}</form>`, p => {
+    const f = $('#if', p);
+    f.addEventListener('submit', e => {
+      e.preventDefault(); const v = Object.fromEntries(new FormData(f)); for (const k in v) v[k] = v[k].trim();
+      const data = {name: v.name, everyHours: num(v.everyHours), everyDays: num(v.everyDays), lastDoneHours: num(v.lastDoneHours), lastDoneDate: v.lastDoneDate, updatedAt: nowIso()};
+      if (data.everyHours == null && data.everyDays == null) { alert('Enter how often: every so many hours, days, or both.'); return; }
+      if (isNew) db.intervals.push({id: uid(), tractorId: t.id, createdAt: nowIso(), ...data}); else Object.assign(iv, data);
+      t.updatedAt = nowIso(); save(); closeSheet(); render(); toast('Interval saved');
+    });
+    const d = $('#i-del', p); if (d) d.addEventListener('click', () => { if (confirm(`Delete "${iv.name}"? Past log entries stay.`)) { db.intervals = db.intervals.filter(x => x.id !== iv.id);
+      db.maint.forEach(m => { if (m.intervalId === iv.id) m.intervalId = null; }); save(); closeSheet(); render(); toast('Interval deleted'); } });
+  });
 }
 
 function viewField(f) {
@@ -251,7 +519,7 @@ function viewAbout() {
       <h1 style="margin-top:12px">Farm Tracker</h1>
       <p class="bigtext" style="margin:4px 0">by <b>All Pro Digital</b></p>
       <p class="muted" style="margin:0">a Valley Pro Logistics LLC company</p>
-      <p class="muted small">Version ${VERSION} · Milestone 1 demo · Sister app of Service Tracker</p>
+      <p class="muted small">Version ${VERSION} · Demo · Sister app of Service Tracker</p>
     </div>
     <div class="card">
       <h2>Your data</h2>
@@ -344,10 +612,24 @@ document.addEventListener('click', e => {
   const go = e.target.closest('[data-go]'); if (go) { location.hash = go.dataset.go; return; }
   const b = e.target.closest('[data-act]'); if (!b || b.closest('#sheet')) return;
   const m = (location.hash.match(/^#\/field\/([\w-]+)/) || [])[1]; const f = m && field(m); const id = b.dataset.id;
-  const del = (list, what) => { if (confirm(`Delete this ${what}?`)) { db[list] = db[list].filter(x => x.id !== id); if (f) touch(f); save(); render(); toast('Deleted'); } };
+  const tm = (location.hash.match(/^#\/tractor\/([\w-]+)/) || [])[1]; const t = tm && tractor(tm);
+  const del = (list, what) => { if (confirm(`Delete this ${what}?`)) { db[list] = db[list].filter(x => x.id !== id); if (f) touch(f); if (t) t.updatedAt = nowIso(); save(); render(); toast('Deleted'); } };
   switch (b.dataset.act) {
     case 'add-field': return fieldForm();
     case 'clear-sel': return selectField('');
+    case 'clear-tsel': return selectTractor('');
+    case 'add-tractor': return tractorForm();
+    case 'edit-tractor': return tractorForm(t);
+    case 'upd-hours': return hoursForm(t);
+    case 'log-service': return logForm(t, 'service');
+    case 'log-repair': return logForm(t, 'repair');
+    case 'add-interval': return intervalForm(t);
+    case 'edit-interval': return intervalForm(t, db.intervals.find(x => x.id === id));
+    case 'done-interval': return logForm(t, 'service', id);
+    case 'del-entry': return del('maint', 'log entry');
+    case 'del-reading': return del('hours', 'hours reading (current hours stay as they are)');
+    case 'del-tractor': if (confirm(`Delete "${t.name}" and its whole maintenance log? This cannot be undone.`)) { const tid = t.id; db.tractors = db.tractors.filter(x => x.id !== tid);
+      for (const k of TRACTOR_KEYS) db[k] = db[k].filter(x => x.tractorId !== tid); save(); location.hash = lastTab === '#/tractors' ? '#/tractors' : '#/'; toast('Tractor deleted'); } return;
     case 'edit-field': return fieldForm(f);
     case 'status': return statusPicker(f);
     case 'edit-text': return editText(f, b.dataset.key);
@@ -361,11 +643,9 @@ document.addEventListener('click', e => {
     case 'del-harvest': return del('harvests', 'harvest record');
     case 'del-field': if (confirm(`Delete "${f.name}" and all its notes and records? This cannot be undone.`)) { const fid = f.id; db.fields = db.fields.filter(x => x.id !== fid);
       for (const k of ['history', 'notes', 'sprays', 'harvests']) db[k] = db[k].filter(x => x.fieldId !== fid); save(); location.hash = '#/'; toast('Field deleted'); } return;
-    case 'clear-samples': if (confirm('Remove all sample fields? Your own fields stay.')) { const ids = new Set(db.fields.filter(x => x.sample).map(x => x.id)); db.fields = db.fields.filter(x => !x.sample);
-      for (const k of ['history', 'notes', 'sprays', 'harvests']) db[k] = db[k].filter(x => !ids.has(x.fieldId)); save(); render(); toast('Samples removed'); } return;
-    case 'reset-samples': if (confirm('Add the sample fields back? Your own fields stay.')) { const s = seed(); const ids = new Set(db.fields.filter(x => x.sample).map(x => x.id));
-      for (const k of ['fields', 'history', 'notes', 'sprays', 'harvests']) db[k] = db[k].filter(x => !(ids.has(x.id) && k === 'fields') && !ids.has(x.fieldId)).concat(s[k]);
-      save(); location.hash = '#/'; render(); toast('Sample fields loaded'); } return;
+    case 'clear-samples': if (confirm('Remove all sample fields and tractors? Your own stay.')) { removeSamples(db); save(); render(); toast('Samples removed'); } return;
+    case 'reset-samples': if (confirm('Load the sample fields and tractors again? Your own stay.')) { removeSamples(db); const s = seed();
+      for (const k of ['fields', 'tractors', ...FIELD_KEYS, ...TRACTOR_KEYS]) db[k] = db[k].concat(s[k]); save(); location.hash = '#/'; render(); toast('Sample data loaded'); } return;
     case 'del-op': { const inUse = db.fields.some(x => x.operationId === id) || db.history.some(h => h.toOpId === id || h.fromOpId === id);
       if (inUse) return alert('This operation is used in a field or its history, so it stays. You can still stop picking it.');
       if (confirm('Remove this custom operation?')) { db.operations = db.operations.filter(o => o.id !== id); save(); render(); } return; }
