@@ -17,7 +17,9 @@ Branding: app/PWA name and page title "Farm Tracker"; the launch (splash) screen
 3. **Farm expenses and sales** (milestone 3): costs and income, optionally linked to a field.
 
 ## Milestone 1 (this demo, shippable)
-- Field list: name, crop, acres, current operation badge (color), "Now" line, "Next up" line, last updated.
+- Bottom tab bar: **Home**, **All Fields**, **About** (big tap targets).
+- Home: clean screen with a big search bar (filters by field name/crop/variety as you type, with suggestions) and a dropdown of all fields. Picking one shows just that field's card (operation badge, Now, Next up, last updated) with "Open full detail". Remembers the last field picked. Friendly empty state; "+ Add field" always reachable.
+- All Fields: every field card (name, crop, acres, current operation badge, "Now", "Next up", last updated).
 - Add / edit / delete a field (name, acres, crop, variety, planting date).
 - Field detail: status picker with presets (Discing, Plowing, Cultivating, Planting, Spraying, Fertilizing, Irrigating, Harvesting, Shredding, Idle/Fallow) plus **Add custom operation** (saved for all fields; removable on About if unused).
 - "Where it stands now" and "Next to do": free text in the farmer's own words, each with an Edit button and an updated time.
@@ -85,4 +87,4 @@ Link: `StatusChange.equipmentIds?` (what was run on the field).
 **Sale**: `id`, `date`, `crop`, `buyer` (elevator/gin), `quantity` (number), `unit` (bu, cwt, lb, tons, bales), `price` (per unit), `amount` (total), `fieldId?`, `harvestRecordId?`, `ticketNo?`, `notes`, `createdAt`.
 
 ## Tech (M1)
-Static PWA: `index.html`, `styles.css`, `app.js`, `sw.js`, `manifest.webmanifest`, `icons/`. No build step, no server. Data key `farmtracker.v1` in localStorage (move to IndexedDB when photos arrive). Hosted on GitHub Pages.
+Static PWA: `index.html`, `styles.css`, `app.js`, `sw.js`, `manifest.webmanifest`, `icons/`. No build step, no server. Data key `farmtracker.v1` in localStorage (last Home selection: `farmtracker.selectedField`) (move to IndexedDB when photos arrive). Hosted on GitHub Pages.
