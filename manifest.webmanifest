@@ -1,0 +1,21 @@
+{
+  "id": "./",
+  "name": "Farm Tracker",
+  "short_name": "Farm Tracker",
+  "description": "Farm Tracker by All Pro Digital: field status, next steps, notes, spray and harvest records.",
+  "lang": "en",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1F3A24",
+  "theme_color": "#1F3A24",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {"src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

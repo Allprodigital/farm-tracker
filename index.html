@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Farm Tracker</title>
+<meta name="description" content="Farm Tracker by All Pro Digital: field status, next steps, notes, spray and harvest records.">
+<meta name="theme-color" content="#1F3A24">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Farm Tracker">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="splash" role="status" aria-label="Farm Tracker by All Pro Digital">
+  <img src="icons/icon.svg" alt="" width="132" height="132">
+  <div class="splash-name">Farm Tracker</div>
+  <div class="splash-by">by All Pro Digital</div>
+</div>
+<header class="top">
+  <a class="brand" href="#/"><img src="icons/icon.svg" alt="" width="36" height="36"><span>Farm Tracker</span></a>
+  <a class="about-link" href="#/about" aria-label="About Farm Tracker">About</a>
+</header>
+<main id="view" tabindex="-1"></main>
+<div id="sheet" class="sheet hidden" aria-hidden="true"><div class="panel" role="dialog" aria-modal="true"></div></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
