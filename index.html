@@ -25,6 +25,7 @@
 </div>
 <header class="top">
   <a class="brand" href="#/"><img src="icons/icon.svg" alt="" width="36" height="36"><span>Farm Tracker</span></a>
+  <button type="button" id="bell" class="bell" aria-label="Alerts" aria-haspopup="dialog" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6.5 2 6.5H4S6 14 6 9"/><path d="M10 19a2 2 0 0 0 4 0"/></svg><span class="bell-badge" hidden></span></button>
 </header>
 <main id="view" tabindex="-1"></main>
 <nav class="tabs" aria-label="Main">
@@ -35,6 +36,7 @@
 </nav>
 <div id="sheet" class="sheet hidden" aria-hidden="true"><div class="panel" role="dialog" aria-modal="true"></div></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="bell-panel" class="bell-panel hidden" role="dialog" aria-label="Alerts"></div>
 <div id="voice" class="voice-panel hidden" role="dialog" aria-live="polite"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-label="Photo"></div>
 <div id="print" aria-hidden="true"></div>

@@ -45,11 +45,22 @@ const MOCKS = () => {
   // Own field so the backup reminder applies
   await tapAct('add-field'); await p.type('#f-name', 'Back Forty'); await p.type('#f-crop', 'Grain sorghum'); await p.click('#ff button[type=submit]'); await sleep(400);
   await go('#/');
-  ok(!!(await p.$('.remind-over')), 'Home shows overdue service reminder banner');
-  ok(!!(await p.$('.backup-banner')), 'Home shows backup reminder (own data, never backed up)');
+  ok(!(await p.$('.remind, .backup-banner, .remind-over')), 'no in-page alert banners on Home');
+  ok((await p.$eval('#bell .bell-badge', e => e.hidden ? '' : e.textContent)) === '3', 'header bell badge shows 3 (overdue + due soon + backup)');
   const badge = await p.$eval('.tabs a[href="#/tractors"] .tab-badge', e => e.hidden ? '' : e.textContent); ok(badge === '2', 'Tractors tab badge shows 2 due items: ' + badge);
-  await sleep(1900); await shot('15-home-reminder');
-  await tapAct('enable-alerts'); await sleep(600);
+  await sleep(1900); await shot('18-home-bell');
+  await p.click('#bell'); await sleep(300);
+  const bl = await p.$$eval('#bell-panel .bell-item', a => a.map(x => [x.className.split(' ').pop(), x.textContent.replace(/\s+/g, ' ').trim()]));
+  ok(bl.length === 3 && bl[0][0] === 'bi-over' && /John Deere 8335R: Fuel filters.*OVERDUE by 42 hrs/.test(bl[0][1]) && bl[1][0] === 'bi-soon' && bl[2][0] === 'bi-backup' && /Back up your data/.test(bl[2][1]), 'bell list: overdue, due soon, backup (color-coded): ' + JSON.stringify(bl.map(x => x[1])));
+  await shot('18b-bell-open');
+  await p.click('#bell-panel [data-bell-close]'); await sleep(200);
+  ok(await p.$eval('#bell-panel', e => e.classList.contains('hidden')), 'Close button closes the bell list');
+  await p.click('#bell'); await sleep(200); await p.click('#bell-panel .bi-over'); await sleep(700);
+  ok(/^#\/tractor\//.test(await p.evaluate(() => location.hash)) && await p.evaluate(() => { const el = document.querySelector('.ivs li.iv-over'); const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }), 'tapping an alert opens the tractor at that service item');
+  ok(!(await p.$('.remind, .backup-banner')), 'no alert banners on the tractor page');
+  await go('#/tractors'); ok(!(await p.$('.remind, .backup-banner')), 'no alert banners on the Tractors tab');
+  await go('#/');
+  await p.click('#bell'); await sleep(200); await p.click('#bell-panel [data-bell-enable]'); await sleep(600);
   let n = await p.evaluate(() => window.__notified); ok(n.length === 1 && /1 overdue, 1 due soon/.test(n[0].title), `local notification shown after enabling (${n[0] && n[0].via}): ${n[0] && n[0].title}`);
   await p.reload({waitUntil: 'networkidle0'}); await sleep(2500);
   n = await p.evaluate(() => window.__notified); ok(n.length === 0, 'no repeat notification on reopen the same day');
@@ -141,7 +152,8 @@ const MOCKS = () => {
   const bj = bk ? JSON.parse(fs.readFileSync(bk, 'utf8')) : {};
   ok(bj.app === 'Farm Tracker' && bj.photos && bj.photos.length === 2 && /^data:image\/jpeg;base64,/.test(bj.photos[0].data) && bj.data.fields.length === 5, 'backup file has all data + 2 photos: ' + (bk ? path.basename(bk) + ' ' + Math.round(fs.statSync(bk).size / 1024) + ' KB' : 'none'));
   await sleep(300); ok(!(await p.$eval('#backup-card', e => e.textContent)).includes('never'), 'last backed up updated');
-  await go('#/'); ok(!(await p.$('.backup-banner')), 'backup reminder gone after backing up');
+  await go('#/'); await p.click('#bell'); await sleep(200);
+  ok(!(await p.$('#bell-panel .bi-backup')), 'backup alert gone from the bell after backing up'); await p.click('#bell-panel [data-bell-close]');
   // wreck data, then restore
   await p.evaluate(async () => { db.notes = []; db.maint = []; save(); await PhotoDB.clear(); });
   await go('#/about');
@@ -150,8 +162,21 @@ const MOCKS = () => {
   ok(after.notes >= 5 && after.maint >= 5 && after.photos === 2 && after.withPhoto === 1, 'restore brought back notes, log and photos: ' + JSON.stringify(after));
   await go('#/field/' + nid); await sleep(400);
   ok(await p.evaluate(() => !!document.querySelector('#notes-card .items img[src^="blob:"]')), 'restored photo displays');
+  // notification tap paths open the bell list
+  await p.evaluate(() => navigator.serviceWorker && navigator.serviceWorker.dispatchEvent(new MessageEvent('message', {data: {type: 'open-alerts'}}))); await sleep(200);
+  if (base.startsWith('https')) ok(await p.$eval('#bell-panel', e => !e.classList.contains('hidden')), 'notification tap (service worker message) opens the bell list');
+  await p.evaluate(() => closeBell());
+  await p.goto(base + '#/alerts', {waitUntil: 'networkidle0'}); await sleep(1800);
+  ok(await p.$eval('#bell-panel', e => !e.classList.contains('hidden')) && (await p.evaluate(() => location.hash)) === '#/', 'opening from a notification (#/alerts) shows the bell list');
+  await p.evaluate(() => closeBell());
+  // empty state
+  await go('#/'); await tapAct('clear-samples'); await sleep(300);
+  ok(await p.$eval('#bell .bell-badge', e => e.hidden), 'no badge when nothing is due');
+  await p.click('#bell'); await sleep(200);
+  ok((await p.$eval('#bell-panel', e => e.textContent)).includes('All caught up'), 'bell shows "All caught up" when empty');
+  if (shots) await p.screenshot({path: `${shots}/18c-bell-all-caught-up.png`}); await p.evaluate(() => closeBell());
   ok((await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) === 0, 'no horizontal overflow');
-  if (base.startsWith('https')) ok(await p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return !!r && (await caches.keys()).includes('farmtracker-v1.3.0'); }), 'service worker + v1.3.0 offline cache');
+  if (base.startsWith('https')) ok(await p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return !!r && (await caches.keys()).includes('farmtracker-v1.3.1'); }), 'service worker + v1.3.1 offline cache');
   ok(errors.length === 0, 'no console errors ' + JSON.stringify(errors));
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });

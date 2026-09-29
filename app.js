@@ -1,7 +1,7 @@
 /* Farm Tracker (milestone 1 + tractor maintenance) by All Pro Digital, a Valley Pro Logistics LLC company.
    Single-file vanilla JS app. Data lives on this device in localStorage (key: farmtracker.v1). */
 'use strict';
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const KEY = 'farmtracker.v1';
 const PRESETS = [
   ['discing', 'Discing', '#8a5a2b'], ['plowing', 'Plowing', '#6d4c2f'], ['cultivating', 'Cultivating', '#9a6b12'],
@@ -188,7 +188,8 @@ function render() {
   if (!onDetail && tab !== '#/about') lastTab = tab;
   document.querySelectorAll('.tabs a').forEach(a => { const on = a.getAttribute('href') === tab; a.classList.toggle('active', on); on ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
   document.body.classList.toggle('has-taskbar', !!onDetail);
-  updateTabBadge(); hydratePhotos($('#view'));
+  updateTabBadge(); updateBell(); hydratePhotos($('#view'));
+  if (/^#\/alerts/.test(h)) { history.replaceState(null, '', '#/'); openBell(); }
   if (onDetail) buildPrint(h.startsWith('#/field/') ? 'field' : 'tractor', m[1]); // ready for an instant Print tap
   if (!keepScroll) window.scrollTo(0, 0); keepScroll = false;
 }
@@ -234,7 +235,7 @@ function matches(q) {
 function viewHome() {
   document.title = 'Farm Tracker';
   const sel = selectedField(), tsel = selectedTractor();
-  $('#view').innerHTML = `${reminderBanner()}${backupBanner()}${sampleBanner(true)}
+  $('#view').innerHTML = `${sampleBanner(true)}
     <section class="home-sec" aria-labelledby="q-label">
     <div class="search-wrap">
       <div class="sec-head"><label for="q" id="q-label" class="search-label">Find a field</label><button class="edit" data-act="add-field">+ Add field</button></div>
@@ -295,7 +296,6 @@ const taskbar = kind => `<nav class="taskbar" aria-label="Quick actions">
 const photoBtns = ctx => `<button type="button" class="tool" data-act="${ctx}-cam">${ICON.cam}<span>Camera</span></button><button type="button" class="tool" data-act="${ctx}-lib">${ICON.lib}<span>Library</span></button>`;
 const drafts = {}; // unsaved note text + photos per field, kept across re-renders
 const draftFor = id => drafts[id] || (drafts[id] = {text: '', photos: []});
-const backupBanner = () => backupDue() ? `<div class="sample-banner compact backup-banner" role="status"><span><b>${backupDays() == null ? 'Not backed up yet' : `Last backup: ${backupDays()} days ago`}</b> Your records live only on this phone.</span><button class="primary edit" data-act="backup">Back up</button></div>` : '';
 
 /* ---------- tractor screens ---------- */
 const TSEL_KEY = 'farmtracker.selectedTractor';
@@ -348,7 +348,7 @@ function viewTractor(t) {
     </div>
     <div class="card">
       <div class="card-head"><h2>Service intervals</h2><button class="edit" data-act="add-interval">+ Add</button></div>
-      ${ivs.length ? `<ul class="items ivs">${ivs.map(({iv, st}) => `<li class="iv iv-${st.level}"><div class="grow">
+      ${ivs.length ? `<ul class="items ivs">${ivs.map(({iv, st}) => `<li class="iv iv-${st.level}" id="iv-${iv.id}"><div class="grow">
           <div class="row split"><b class="iv-name">${esc(iv.name)}</b>${pill(st.level)}</div>
           <div class="small">${esc(ivRule(iv))}</div>
           <div class="small">Last done: ${[num(iv.lastDoneHours) != null ? hrs(iv.lastDoneHours) + ' hrs' : '', iv.lastDoneDate ? fmtDate(iv.lastDoneDate) : ''].filter(Boolean).map(esc).join(' · ') || '<span class="empty">not recorded</span>'}</div>
@@ -558,7 +558,7 @@ function viewAbout() {
     <div class="card" id="backup-card">
       <h2>Backup</h2>
       <p style="margin-top:0">Everything is saved <b>on this phone only</b>. If the phone is lost or browser data is cleared, it's gone, so save a backup file somewhere safe (Files, Google Drive, email). Photos are included.</p>
-      <div class="backup-status ${backupDue() ? 'due' : ''}">Last backed up: <b>${lastBackup() ? esc(fmt(lastBackup())) + ' (' + esc(ago(lastBackup())) + ')' : 'never'}</b>${backupDue() ? (lastBackup() ? '<br>It has been over a week. Back up now.' : '<br>Back up now so nothing is lost.') : ''}</div>
+      <p class="backup-status">Last backed up: <b>${lastBackup() ? esc(fmt(lastBackup())) + ' (' + esc(ago(lastBackup())) + ')' : 'never'}</b></p>
       <button class="primary wide big-act" data-act="backup">Back up now</button>
       <button class="wide" style="margin-top:10px" data-act="restore">Restore from backup</button>
       <p class="tiny muted">Restoring replaces what's on this phone with the backup file.</p>
