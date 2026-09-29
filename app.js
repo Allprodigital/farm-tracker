@@ -182,7 +182,7 @@ function confirmSheet({title, body, yes, run}) {
     <div class="sheet-actions"><button type="button" data-close>Cancel</button><button type="button" class="danger-solid" id="cf-yes">${esc(yes)}</button></div>`,
     p => $('#cf-yes', p).addEventListener('click', () => { closeSheet(); run(); }));
 }
-const cropLine = f => [f.crop, f.variety, f.acres ? f.acres + ' ac' : ''].filter(Boolean).map(esc).join(' · ');
+const cropLine = f => [f.crop, f.variety, f.acres ? f.acres + '\u00a0ac' : ''].filter(Boolean).map(esc).join(' · ');
 
 /* ---------- sheet (bottom panel) ---------- */
 function openSheet(html, bind) {
