@@ -68,6 +68,36 @@ Kept simple: fields + tractors only. Reviewed every screen at iPhone (390x844) a
 - **1.4.1**: long toast messages (e.g. "Photo added. Add a few words and tap Save note.") wrap onto two lines instead of running off narrow screens; the Undo toast stays on one line.
 - Deliberately left alone: the tab bar, taskbar, bell, backup/restore, voice, photos, print, the Home layout (search + picker per section), the operation colors, tractor intervals and history.
 
+## Research notes (Oct 2026) — ideas from similar farmer apps
+Looked at field-ops patterns from apps in this space (maps/telemetry platforms, offline farm record apps, and mobile UX guides). Competitor names are kept out of the product UI.
+
+Concrete ideas that fit a small phone PWA **without paid map APIs**:
+1. **Weather glance on Home** — today's conditions + short forecast (Farmbrite and others put climate on the dashboard).
+2. **Workability / rain hint** — "too wet / maybe workable / looks workable" from precipitation (cab decision support).
+3. **Pin favorites** — quick access to the fields and tractors you open every day.
+4. **Duplicate field** — copy acres/crop/variety when a landlord splits a tract or you add a similar block.
+5. **Copy last spray** — prefill product/rate/unit (predictive data entry; fewer taps in the cab).
+6. **Acreage totals by crop** — at-a-glance inventory on All Fields.
+7. **Activity filters on a field** — Notes / Sprays / Harvest / History chips so a long page is scannable.
+8. **Mark next done for today** — one tap turns "Next to do" into a dated note and clears it.
+9. **One-tap / recent presets for status** — already shipped in v1.4 (Recent operations).
+10. **Service-due sort on equipment** — already shipped in v1.2 (Tractors tab ranks overdue first).
+11. **Offline-first capture** — already shipped (localStorage + IndexedDB + SW).
+12. **Maps / scouting layers / satellite** — deferred (needs map tiles or paid APIs).
+13. **Cloud sync / multi-user / work orders** — deferred (needs accounts; see Cloud sync above).
+14. **Expenses / sales / inventory** — out of scope (fields + tractors only).
+
+## v1.5: Weather, pins, and cab shortcuts
+- **Weather glance** on Home via Open-Meteo (no API key). Shows today's high/low, condition, rain chance, wind, and a workability hint (Looks workable / Maybe workable / Too wet to work), plus tomorrow and the next day. Cached ~45 min on the phone; Refresh button; attribution "Open-Meteo". Farm location defaults to Rio Hondo, TX; changeable on About (manual lat/lon or "Use this phone's location").
+- **Pinned fields and tractors**: star on the detail page; pinned chips appear on Home for one-tap open (up to 8 each).
+- **Duplicate field**: copies name/acres/crop/variety into a new Idle field named "… (copy)" so you can rename it.
+- **Copy last spray**: prefills product, rate, unit and notes from that field's last spray (or any last spray if the field has none). Date is today.
+- **Acres by crop** strip on All Fields (total + per-crop chips). Fields without acres are skipped.
+- **Activity filter chips** on a field page: All · Notes · Sprays · Harvest · History (choice remembered).
+- **Mark next done for today**: on a field with Next to do set, one tap saves a note "Done today: …", clears Next to do, and offers Undo.
+
+Deferred from research: maps/boundaries, satellite layers, multi-user work orders, cloud sync, expenses/sales, inventory auto-deduction, equipment↔field linking.
+
 ## Later milestones
 - **M2 Equipment**: tractors, hours, service intervals and maintenance log shipped in v1.2 (above). Remaining: implements, link equipment to field work, reminders.
 - **M4 Accounts and sync**: sign-in, cloud sync, use on multiple phones (see Cloud sync above), then true push reminders.
@@ -121,4 +151,4 @@ Later: `Season`/crop year on Field so a field keeps a crop history year to year.
 Later link: `StatusChange.equipmentIds?` (what was run on the field).
 
 ## Tech
-Static PWA: `index.html`, `styles.css`, `print.css`, `app.js`, `lib/` (photos, voice, reminders, backup, print, welcome), `sw.js`, `manifest.webmanifest`, `icons/`. No build step, no server. Data key `farmtracker.v1` in localStorage (last Home selections: `farmtracker.selectedField`, `farmtracker.selectedTractor`) ; photos in IndexedDB `farmtracker-photos`; last backup time `farmtracker.lastBackup`; quick tour seen `farmtracker.welcomed`; All Fields sort `farmtracker.fieldSort`. Hosted on GitHub Pages.
+Static PWA: `index.html`, `styles.css`, `print.css`, `app.js`, `lib/` (photos, voice, reminders, backup, print, welcome, weather), `sw.js`, `manifest.webmanifest`, `icons/`. No build step, no server. Data key `farmtracker.v1` in localStorage (last Home selections: `farmtracker.selectedField`, `farmtracker.selectedTractor`) ; photos in IndexedDB `farmtracker-photos`; last backup time `farmtracker.lastBackup`; quick tour seen `farmtracker.welcomed`; All Fields sort `farmtracker.fieldSort`; pins `farmtracker.pinnedFields` / `farmtracker.pinnedTractors`; farm location `farmtracker.farmLoc`; weather cache `farmtracker.weather`; field activity filter `farmtracker.fieldFilt`. Hosted on GitHub Pages.

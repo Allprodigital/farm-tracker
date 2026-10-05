@@ -133,7 +133,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   if (shots) await shot('19-home-empty');
   await tap('.home-empty.first-run [data-act="add-field"]'); await sleep(300); ok(!!(await p.$('#ff')), 'first-field button opens Add field'); await p.evaluate(() => closeSheet());
   ok((await p.$$eval('meta[name="color-scheme"]', a => a.map(x => x.content))).includes('only light'), 'page opts out of forced dark mode (stays high-contrast)');
-  if (base.startsWith('https')) { await sleep(800); ok(await p.evaluate(async () => (await caches.keys()).includes('farmtracker-v1.4.1')), 'v1.4.1 offline cache'); }
+  if (base.startsWith('https')) { await sleep(800); ok(await p.evaluate(async () => (await caches.keys()).includes('farmtracker-v1.5.0')), 'v1.5.0 offline cache'); }
   ok(errors.length === 0, 'no console errors ' + JSON.stringify(errors));
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });

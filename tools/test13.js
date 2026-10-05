@@ -177,7 +177,7 @@ const MOCKS = () => {
   ok((await p.$eval('#bell-panel', e => e.textContent)).includes('All caught up'), 'bell shows "All caught up" when empty');
   if (shots) await p.screenshot({path: `${shots}/18c-bell-all-caught-up.png`}); await p.evaluate(() => closeBell());
   ok((await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) === 0, 'no horizontal overflow');
-  if (base.startsWith('https')) ok(await p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return !!r && (await caches.keys()).includes('farmtracker-v1.4.1'); }), 'service worker + v1.4.1 offline cache');
+  if (base.startsWith('https')) ok(await p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return !!r && (await caches.keys()).includes('farmtracker-v1.5.0'); }), 'service worker + v1.5.0 offline cache');
   ok(errors.length === 0, 'no console errors ' + JSON.stringify(errors));
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });

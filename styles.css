@@ -329,3 +329,33 @@ button.danger{border-color:#e5b4b4}
 @keyframes ft-fade{from{opacity:0}to{opacity:1}}
 @keyframes ft-rise{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
 @keyframes ft-drop{from{transform:translateY(-6px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+
+/* v1.5: weather glance, pins, acreage, activity filter, duplicate */
+.wx-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:0 0 14px;box-shadow:0 1px 2px rgba(60,45,10,.05),0 6px 16px rgba(60,45,10,.04)}
+.wx-ok{border-left:7px solid #2d6a31}.wx-caution{border-left:7px solid #b45309}.wx-wet{border-left:7px solid #1d5f8a}
+.wx-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.wx-head b{font-size:18px}.wx-loc{flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wx-head .edit{min-height:40px;min-width:44px;padding:6px 10px}
+.wx-main{display:flex;gap:14px;align-items:center}
+.wx-temp{font-size:42px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.wx-temp span{font-size:20px;color:var(--muted);font-weight:700}
+.wx-cond{font-weight:800;font-size:18px}
+.wx-work{font-weight:800;font-size:16px;margin:2px 0}
+.wx-w-ok{color:#2d6a31}.wx-w-caution{color:#8a4b06}.wx-w-wet{color:#1d5f8a}
+.wx-days{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.wx-day{background:#f7f4ec;border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;font-size:15px}
+.wx-attr{margin:8px 0 0;text-align:right}
+.pins-sec{padding-bottom:12px}
+.pin-row{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+.pin-chip{flex:0 0 auto;display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-left:6px solid var(--op,#777);border-radius:12px;padding:10px 12px;min-height:52px;font-size:16px;box-shadow:0 1px 2px rgba(60,45,10,.05)}
+.pin-chip b{font-size:17px}
+.pin-t{border-left-color:#5f665f}
+.pin{min-height:48px;min-width:48px;padding:0;font-size:26px;line-height:1;border-color:var(--line2);color:#b45309;background:#fff;border-radius:14px}
+.pin.on{background:#fff7ea;border-color:#b45309}
+.pin-mark{color:#b45309;font-size:18px}
+.acr-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px;padding:10px 12px;background:var(--soft);border-radius:14px;border:1px solid #d5e3c8}
+.acr-total{font-size:16px;margin-right:4px}
+.acr-chip{background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:15px}
+.act-filt{margin:0 0 12px}
+.card-head .row{gap:6px}
+.card-head .edit[disabled]{opacity:.4}

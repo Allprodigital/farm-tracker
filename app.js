@@ -1,7 +1,7 @@
 /* Farm Tracker (milestone 1 + tractor maintenance) by All Pro Digital, a Valley Pro Logistics LLC company.
    Single-file vanilla JS app. Data lives on this device in localStorage (key: farmtracker.v1). */
 'use strict';
-const VERSION = '1.4.1';
+const VERSION = '1.5.0';
 const KEY = 'farmtracker.v1';
 const PRESETS = [
   ['discing', 'Discing', '#8a5a2b'], ['plowing', 'Plowing', '#6d4c2f'], ['cultivating', 'Cultivating', '#9a6b12'],
@@ -184,6 +184,19 @@ function confirmSheet({title, body, yes, run}) {
 }
 const cropLine = f => [f.crop, f.variety, f.acres ? f.acres + '\u00a0ac' : ''].filter(Boolean).map(esc).join(' · ');
 
+/* ---------- pins (favorites on Home) ---------- */
+const PIN_F = 'farmtracker.pinnedFields', PIN_T = 'farmtracker.pinnedTractors';
+const loadPins = k => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } };
+const savePins = (k, ids) => { try { localStorage.setItem(k, JSON.stringify(ids)); } catch (e) {} };
+const pinnedFields = () => loadPins(PIN_F).map(field).filter(Boolean);
+const pinnedTractors = () => loadPins(PIN_T).map(tractor).filter(Boolean);
+const isPinned = (kind, id) => loadPins(kind === 'field' ? PIN_F : PIN_T).includes(id);
+function togglePin(kind, id) {
+  const key = kind === 'field' ? PIN_F : PIN_T; let ids = loadPins(key);
+  ids = ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id].slice(-8); savePins(key, ids); toast(ids.includes(id) ? 'Pinned to Home' : 'Unpinned'); rerender();
+}
+const pinBtn = (kind, id) => `<button type="button" class="pin ${isPinned(kind, id) ? 'on' : ''}" data-act="pin" data-kind="${kind}" data-id="${id}" aria-label="${isPinned(kind, id) ? 'Unpin' : 'Pin'} to Home" aria-pressed="${isPinned(kind, id)}">${isPinned(kind, id) ? '★' : '☆'}</button>`;
+
 /* ---------- sheet (bottom panel) ---------- */
 function openSheet(html, bind) {
   const s = $('#sheet'), p = $('.panel', s); p.innerHTML = html; s.classList.remove('hidden'); s.setAttribute('aria-hidden', 'false');
@@ -233,13 +246,22 @@ function lastWorked(f) {
 }
 function fieldCard(f, tag = 'a') {
   const o = op(f.operationId);
-  const inner = `<div class="fc-top"><div class="fc-name">${esc(f.name)} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</div><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></div>
+  const pin = isPinned('field', f.id) ? ' <span class="pin-mark" aria-hidden="true">★</span>' : '';
+  const inner = `<div class="fc-top"><div class="fc-name">${esc(f.name)}${pin} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</div><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></div>
     ${cropLine(f) ? `<div class="fc-crop">${cropLine(f)}</div>` : ''}
     ${f.currentState ? `<div class="fc-line"><b>Now:</b> ${esc(f.currentState)}</div>` : ''}
     <div class="fc-next"><b>Next up:</b> ${f.nextTodo ? esc(f.nextTodo) : '<span class="empty">Nothing set</span>'}</div>
     <div class="fc-foot">${lastWorked(f)}</div>`;
   return tag === 'a' ? `<a class="field-card" style="--op:${o.color}" href="#/field/${f.id}">${inner}</a>` : `<div class="field-card" style="--op:${o.color}">${inner}</div>`;
 }
+function acreageByCrop() {
+  const map = new Map(); let total = 0;
+  for (const f of db.fields) { const a = Number(f.acres); if (!a || isNaN(a)) continue; const k = (f.crop || 'No crop').trim() || 'No crop'; map.set(k, (map.get(k) || 0) + a); total += a; }
+  if (!total) return '';
+  const rows = [...map.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="acr-chip"><b>${esc(k)}</b> ${Number(v).toLocaleString('en-US', {maximumFractionDigits: 1})}&nbsp;ac</span>`).join('');
+  return `<div class="acr-bar" aria-label="Acres by crop"><span class="acr-total"><b>${Number(total).toLocaleString('en-US', {maximumFractionDigits: 1})}</b> ac total</span>${rows}</div>`;
+}
+
 
 const SORT_KEY = 'farmtracker.fieldSort';
 const SORTS = [['recent', 'Recent'], ['name', 'A–Z'], ['op', 'Operation']];
@@ -254,6 +276,7 @@ function viewAll() {
   } else list = (mode === 'name' ? byName() : sortedFields()).map(f => `<li>${fieldCard(f)}</li>`).join('');
   $('#view').innerHTML = `${sampleBanner()}
     <div class="row split"><h1>All fields</h1><span class="muted small">${db.fields.length} field${db.fields.length === 1 ? '' : 's'}</span></div>
+    ${acreageByCrop()}
     ${db.fields.length > 1 ? `<div class="chips" role="group" aria-label="Sort fields"><span class="chips-label">Sort</span>${SORTS.map(([k, l]) => `<button type="button" class="chip" data-act="sort" data-id="${k}" aria-pressed="${k === mode}">${l}</button>`).join('')}</div>` : ''}
     ${db.fields.length ? `<ul class="fields">${list}</ul>`
       : `<div class="card empty-card"><p class="bigtext"><b>No fields yet.</b></p><p class="muted">Tap <b>+ Add field</b> below to start your list.</p></div>`}
@@ -269,10 +292,16 @@ function matches(q) {
     .sort((a, b) => (b.name.toLowerCase().startsWith(q) ? 1 : 0) - (a.name.toLowerCase().startsWith(q) ? 1 : 0));
 }
 
+function pinStrip() {
+  const fs = pinnedFields(), ts = pinnedTractors(); if (!fs.length && !ts.length) return '';
+  return `<section class="home-sec pins-sec" aria-label="Pinned"><div class="sec-head"><h2 class="search-label">Pinned</h2></div>
+    <div class="pin-row">${fs.map(f => { const o = op(f.operationId); return `<a class="pin-chip" style="--op:${o.color}" href="#/field/${f.id}"><b>${esc(f.name)}</b><span class="badge" style="--op:${o.color}">${esc(o.name)}</span></a>`; }).join('')}
+    ${ts.map(t => { const nd = nextDue(t); const lvl = nd ? nd.st.level : 'none'; return `<a class="pin-chip pin-t" href="#/tractor/${t.id}"><b>${esc(t.name)}</b><span class="st st-${lvl}">${LEVEL[lvl][0]}</span></a>`; }).join('')}</div></section>`;
+}
 function viewHome() {
   document.title = 'Farm Tracker';
   const sel = selectedField(), tsel = selectedTractor();
-  $('#view').innerHTML = `${sampleBanner()}
+  $('#view').innerHTML = `${sampleBanner()}${weatherCardHtml(cachedWeather())}${pinStrip()}
     <section class="home-sec" aria-labelledby="q-label">
     ${!db.fields.length ? `<div class="sec-head"><h2 id="q-label" class="search-label">Fields</h2></div>
       <div class="card home-empty first-run"><p class="bigtext"><b>No fields yet.</b></p><p class="muted small">Add each field once. Then pick it here to see where it stands and what's next.</p>
@@ -308,6 +337,7 @@ function viewHome() {
         <p class="muted small">The <b>Tractors</b> tab below lists them all.</p></div>`}
       </div>`}</section>`;
   if ($('#tpick')) $('#tpick').addEventListener('change', e => selectTractor(e.target.value));
+  setTimeout(hydrateWeather, 80);
   const q = $('#q'), sugg = $('#sugg'); if (!q) return;
   const show = () => {
     const list = matches(q.value); const open = q.value.trim() !== '';
@@ -348,7 +378,8 @@ const byTractorName = () => [...db.tractors].sort((a, b) => a.name.localeCompare
 
 function tractorCard(t, tag = 'a') {
   const nd = nextDue(t), le = entriesOf(t)[0]; const lvl = nd ? nd.st.level : 'none';
-  const inner = `<div class="fc-top"><div><div class="fc-name">${esc(t.name)} ${t.sample ? '<span class="tag-sample">Sample</span>' : ''}</div>
+  const pin = isPinned('tractor', t.id) ? ' <span class="pin-mark" aria-hidden="true">★</span>' : '';
+  const inner = `<div class="fc-top"><div><div class="fc-name">${esc(t.name)}${pin} ${t.sample ? '<span class="tag-sample">Sample</span>' : ''}</div>
       ${tractorSub(t) ? `<div class="fc-crop">${tractorSub(t)}</div>` : ''}</div>
       <div class="hrs-chip"><b>${hrs(t.currentHours)}</b><span>hrs</span></div></div>
     <div class="due-box due-${lvl}"><div class="row split"><b>Next service</b>${pill(lvl)}</div>
@@ -379,7 +410,7 @@ function viewTractor(t) {
     <button class="back" data-go="${lastTab}">‹ ${lastTab === '#/tractors' ? 'Tractors' : 'Home'}</button>
     ${t.sample ? `<div class="sample-banner note"><b>Sample tractor.</b> Hours, intervals and entries are made-up examples, not John Deere specs. Use your operator's manual for real intervals.</div>` : ''}
     <div class="card">
-      <h1>${esc(t.name)} ${t.sample ? '<span class="tag-sample">Sample</span>' : ''}</h1>
+      <div class="row split" style="align-items:flex-start"><h1 style="margin:0">${esc(t.name)} ${t.sample ? '<span class="tag-sample">Sample</span>' : ''}</h1>${pinBtn('tractor', t.id)}</div>
       <dl class="meta">${[['Make', t.make], ['Model', t.model], ['Year', t.year], ['Serial / VIN', t.serial]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('') || '<dt>Details</dt><dd class="empty">not set</dd>'}</dl>
       <button class="wide" data-act="edit-tractor">Edit tractor</button>
     </div>
@@ -529,17 +560,19 @@ function viewField(f) {
   const hist = db.history.filter(h => h.fieldId === f.id).sort((a, b) => b.at.localeCompare(a.at));
   const sprays = db.sprays.filter(s => s.fieldId === f.id).sort((a, b) => b.date.localeCompare(a.date));
   const harvests = db.harvests.filter(s => s.fieldId === f.id).sort((a, b) => b.date.localeCompare(a.date));
+  const filt = ['all', 'notes', 'sprays', 'harvest', 'history'].includes(localStorage.getItem('farmtracker.fieldFilt')) ? localStorage.getItem('farmtracker.fieldFilt') : 'all';
+  const show = k => filt === 'all' || filt === k;
   $('#view').innerHTML = `
     <button class="back" data-go="${lastTab}">‹ ${lastTab === '#/fields' ? 'All fields' : 'Home'}</button>
     <div class="card">
-      <h1>${esc(f.name)} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</h1>
+      <div class="row split" style="align-items:flex-start"><h1 style="margin:0">${esc(f.name)} ${f.sample ? '<span class="tag-sample">Sample</span>' : ''}</h1>${pinBtn('field', f.id)}</div>
       <dl class="meta">
         <dt>Crop</dt><dd>${esc(f.crop) || '<span class="empty">not set</span>'}</dd>
         ${f.variety ? `<dt>Variety</dt><dd>${esc(f.variety)}</dd>` : ''}
         <dt>Planted</dt><dd>${f.plantedOn ? esc(fmtDate(f.plantedOn)) : '<span class="empty">not set</span>'}</dd>
         ${f.acres ? `<dt>Acres</dt><dd>${esc(f.acres)}</dd>` : ''}
       </dl>
-      <button class="wide" data-act="edit-field">Edit field &amp; crop</button>
+      <div class="row" style="margin-top:4px"><button class="wide grow" data-act="edit-field">Edit field &amp; crop</button><button class="wide grow" data-act="dup-field">Duplicate</button></div>
     </div>
     <div class="card">
       <h2>Current operation</h2>
@@ -548,8 +581,9 @@ function viewField(f) {
       <button class="primary wide" style="margin-top:12px" data-act="status">Change status</button>
     </div>
     ${textCard('currentState', 'Where it stands now', f.currentState, f.stateUpdatedAt, 'e.g. Disced once, clods still big on the low end')}
-    ${textCard('nextTodo', 'Next to do', f.nextTodo, f.nextUpdatedAt, 'e.g. Second pass with the disc after it dries out')}
-    <div class="card" id="notes-card">
+    ${textCard('nextTodo', 'Next to do', f.nextTodo, f.nextUpdatedAt, 'e.g. Second pass with the disc after it dries out', f.nextTodo ? `<button class="wide" style="margin-top:10px" data-act="mark-next-done">Mark next done for today</button>` : '')}
+    <div class="chips act-filt" role="group" aria-label="Show activity">${[['all','All'],['notes','Notes'],['sprays','Sprays'],['harvest','Harvest'],['history','History']].map(([k,l]) => `<button type="button" class="chip" data-act="field-filt" data-id="${k}" aria-pressed="${k===filt}">${l}</button>`).join('')}</div>
+    <div class="card ${show('notes')?'':'hidden'}" id="notes-card">
       <h2>Notes</h2>
       <textarea id="note-text" placeholder="Type or tap Voice to talk" aria-label="New note">${esc(draftFor(f.id).text)}</textarea>
       <div class="tools">${micBtn('note-text', 'field')}${photoBtns('note')}</div>
@@ -558,19 +592,19 @@ function viewField(f) {
       ${notes.length ? `<ul class="items">${notes.map(n => `<li><div class="grow"><div class="txt">${esc(n.text)}</div>${thumbs(n.photoIds, 'note:' + n.id)}<div class="stamp">${when(n.createdAt)}</div></div>
         <button class="x" data-act="del-note" data-id="${n.id}" aria-label="Delete note">×</button></li>`).join('')}</ul>` : '<p class="empty">No notes yet.</p>'}
     </div>
-    <div class="card">
-      <div class="card-head"><h2>Spray log</h2><button class="edit" data-act="add-spray">+ Add spray</button></div>
+    <div class="card ${show('sprays')?'':'hidden'}">
+      <div class="card-head"><h2>Spray log</h2><div class="row"><button class="edit" data-act="copy-spray" ${sprays[0]?'':'disabled'}>Copy last</button><button class="edit" data-act="add-spray">+ Add</button></div></div>
       ${sprays.length ? `<ul class="items">${sprays.map(s => `<li><div><div class="txt"><b>${esc(s.product)}</b> · ${esc(s.rate)} ${esc(s.unit)}</div>
         <div class="stamp">${esc(fmtDate(s.date))}${s.notes ? ' · ' + esc(s.notes) : ''}</div></div>
         <button class="x" data-act="del-spray" data-id="${s.id}" aria-label="Delete spray record">×</button></li>`).join('')}</ul>` : '<p class="empty">No spray records.</p>'}
     </div>
-    <div class="card">
+    <div class="card ${show('harvest')?'':'hidden'}">
       <div class="card-head"><h2>Harvest</h2><button class="edit" data-act="add-harvest">+ Add harvest</button></div>
       ${harvests.length ? `<ul class="items">${harvests.map(s => `<li><div><div class="txt"><b>${esc(s.yield)} ${esc(s.unit)}</b></div>
         <div class="stamp">${esc(fmtDate(s.date))}${s.notes ? ' · ' + esc(s.notes) : ''}</div></div>
         <button class="x" data-act="del-harvest" data-id="${s.id}" aria-label="Delete harvest record">×</button></li>`).join('')}</ul>` : '<p class="empty">No harvest records.</p>'}
     </div>
-    <div class="card">
+    <div class="card ${show('history')?'':'hidden'}">
       <h2>Status history</h2>
       <ul class="timeline">${hist.map(h => { const t = op(h.toOpId); return `<li style="--op:${t.color}"><div class="tl-what">${h.fromOpId ? esc(op(h.fromOpId).name) + ' → ' : ''}${esc(t.name)}</div>
         <div class="stamp">${when(h.at)}</div>${h.note ? `<div class="small">${esc(h.note)}</div>` : ''}</li>`; }).join('')}
@@ -580,11 +614,11 @@ function viewField(f) {
     <button class="danger wide" data-act="del-field">Delete this field</button>${taskbar('field')}`;
 }
 
-function textCard(key, title, text, stamp, ph) {
+function textCard(key, title, text, stamp, ph, extra = '') {
   return `<div class="card" id="card-${key}">
     <div class="card-head"><h2>${title}</h2><button class="edit" data-act="edit-text" data-key="${key}">Edit</button></div>
     <div class="bigtext">${text ? esc(text) : `<span class="empty">Tap Edit to add. ${esc(ph)}</span>`}</div>
-    ${stamp ? `<div class="stamp">Updated ${when(stamp)}</div>` : ''}</div>`;
+    ${stamp ? `<div class="stamp">Updated ${when(stamp)}</div>` : ''}${extra}</div>`;
 }
 
 function viewAbout() {
@@ -614,6 +648,12 @@ function viewAbout() {
         : Notification.permission === 'denied' ? '<p class="small">Phone alerts are blocked for this site. Turn them on in your browser or phone settings.</p>'
         : '<button class="primary wide" data-act="enable-alerts">Turn on phone alerts</button>'}
       <p class="tiny muted">Alerts show when the app is opened. To get alerts while the app is closed, use <b>Add to calendar</b> on each service item.</p>
+    </div>
+    <div class="card" id="loc-card">
+      <h2>Farm location</h2>
+      <p style="margin-top:0">Used for the weather glance on Home. Default is the Rio Grande Valley (Rio Hondo, TX). Change it if your farm is elsewhere.</p>
+      <p class="backup-status"><b>${esc(farmLoc().label || 'Unnamed')}</b><br><span class="muted small">${esc(String(farmLoc().lat))}, ${esc(String(farmLoc().lon))}</span></p>
+      <button class="wide" data-act="set-loc">Change location</button>
     </div>
     <div class="card"><h2>Help</h2><button class="wide" data-act="welcome">Show the quick tour</button>
       <button class="wide" style="margin-top:10px" data-act="reset-samples">Reload sample data</button></div>
@@ -688,16 +728,17 @@ function editText(f, key) {
   const ta = $('textarea', card); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
-function recordForm(kind, f) {
-  const spray = kind === 'spray';
-  openSheet(`<form id="rf"><h2>${spray ? 'Add spray record' : 'Add harvest'}</h2>
+function recordForm(kind, f, prefill = null) {
+  const spray = kind === 'spray'; const pf = prefill || {};
+  openSheet(`<form id="rf"><h2>${spray ? (prefill ? 'Copy last spray' : 'Add spray record') : 'Add harvest'}</h2>
+    ${prefill ? '<p class="muted small" style="margin:0">Filled from your last spray. Change anything, then save.</p>' : ''}
     <label for="r-date">Date</label><input id="r-date" name="date" type="date" required value="${todayStr()}">
-    ${spray ? `<label for="r-prod">Product</label><input id="r-prod" name="product" required placeholder="e.g. Atrazine 4L" autofocus>
-      <div class="two"><div><label for="r-rate">Rate</label><input id="r-rate" name="rate" inputmode="decimal" required placeholder="1"></div>
-      <div><label for="r-unit">Unit</label><select id="r-unit" name="unit">${RATE_UNITS.map(u => `<option ${u === 'qt/ac' ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>`
+    ${spray ? `<label for="r-prod">Product</label><input id="r-prod" name="product" required placeholder="e.g. Pre-emerge herbicide" value="${esc(pf.product || '')}" autofocus>
+      <div class="two"><div><label for="r-rate">Rate</label><input id="r-rate" name="rate" inputmode="decimal" required placeholder="1" value="${esc(pf.rate || '')}"></div>
+      <div><label for="r-unit">Unit</label><select id="r-unit" name="unit">${RATE_UNITS.map(u => `<option ${(pf.unit || 'qt/ac') === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>`
     : `<div class="two"><div><label for="r-yield">Yield</label><input id="r-yield" name="yield" inputmode="decimal" required placeholder="62" autofocus></div>
       <div><label for="r-unit">Unit</label><select id="r-unit" name="unit">${YIELD_UNITS.map(u => `<option>${u}</option>`).join('')}</select></div></div>`}
-    <label for="r-notes">Notes (optional)</label><input id="r-notes" name="notes" placeholder="${spray ? 'e.g. 10 gal/ac water, wind calm' : 'e.g. Moisture 14%'}">
+    <label for="r-notes">Notes (optional)</label><input id="r-notes" name="notes" value="${esc(pf.notes || '')}" placeholder="${spray ? 'e.g. 10 gal/ac water, wind calm' : 'e.g. Moisture 14%'}">
     <div class="sheet-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save</button></div></form>`, p => {
     $('#rf', p).addEventListener('submit', e => {
       e.preventDefault(); const v = Object.fromEntries(new FormData(e.target)); for (const k in v) v[k] = v[k].trim();
@@ -764,7 +805,22 @@ document.addEventListener('click', e => {
     case 'enable-alerts': return enableAlerts();
     case 'test-alert': return maybeNotify(true).then(ok => toast(ok ? 'Test alert sent' : 'Nothing is due, so no alert was sent'));
     case 'add-spray': return recordForm('spray', f);
+    case 'copy-spray': { const last = db.sprays.filter(s => s.fieldId === f.id).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))[0]
+        || db.sprays.slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))[0];
+      if (!last) return toast('No spray to copy yet'); return recordForm('spray', f, {product: last.product, rate: last.rate, unit: last.unit, notes: last.notes}); }
     case 'add-harvest': return recordForm('harvest', f);
+    case 'pin': return togglePin(b.dataset.kind, id);
+    case 'dup-field': {
+      const t = nowIso(); const nf = {id: uid(), name: f.name + ' (copy)', acres: f.acres, crop: f.crop, variety: f.variety, plantedOn: '', operationId: 'idle',
+        currentState: '', nextTodo: '', sample: false, createdAt: t, updatedAt: t, statusChangedAt: t, stateUpdatedAt: '', nextUpdatedAt: ''};
+      db.fields.push(nf); db.history.push({id: uid(), fieldId: nf.id, fromOpId: null, toOpId: 'idle', at: t, note: 'Duplicated from ' + f.name});
+      localStorage.setItem(SEL_KEY, nf.id); save(); location.hash = '#/field/' + nf.id; return toast('Field duplicated — rename it'); }
+    case 'mark-next-done': {
+      if (!f.nextTodo) return; const text = 'Done today: ' + f.nextTodo; const t = nowIso();
+      undoable('Marked next done', () => { db.notes.push({id: uid(), fieldId: f.id, text, photoIds: [], createdAt: t}); f.nextTodo = ''; f.nextUpdatedAt = t; touch(f); }); return rerender(); }
+    case 'field-filt': localStorage.setItem('farmtracker.fieldFilt', id); return rerender();
+    case 'wx-refresh': return (async () => { toast('Updating weather…'); try { await fetchWeather(true); hydrateWeather(); toast('Weather updated'); } catch (e) { toast('No signal for weather'); } })();
+    case 'set-loc': return locationSheet();
     case 'del-spray': return del('sprays', 'Spray record');
     case 'del-harvest': return del('harvests', 'Harvest record');
     case 'del-field': return confirmSheet({title: `Delete ${f.name}?`, yes: 'Delete field', body: 'Its notes, photos, spray and harvest records and status history go with it. You can undo for a few seconds.', run: () => {
@@ -794,7 +850,7 @@ async function gcPhotos() { try { const used = new Set([...db.notes, ...db.maint
 /* ---------- start ---------- */
 const START_HASH = location.hash;
 render();
-gcPhotos(); setTimeout(maybeNotify, 1500);
+gcPhotos(); setTimeout(maybeNotify, 1500); setTimeout(hydrateWeather, 400);
 setTimeout(() => { if (!welcomed() && (START_HASH === '' || START_HASH === '#/')) showWelcome(0); }, 1350);
 setTimeout(() => { const s = $('#splash'); s.classList.add('gone'); setTimeout(() => s.remove(), 400); }, 1200);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
